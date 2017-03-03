@@ -185,18 +185,12 @@ pc_cluster_mixed <- pca_mixed$x[, 1:nr_pc_mixed]
 tmp.si <- c()
 for(i in 2:(nrow(pc_cluster_bacteria)-1)){
   tmp.si[i] <- pam(pc_cluster_bacteria, k=i)$silinfo$avg.width
-  # tmp <- eclust(pc_cluster_bacteria, "kmeans", k = i,
-  #               nstart = 25, graph = FALSE)
-  # tmp.si[i] <- summary(silhouette(tmp$cluster, dist(pc_cluster_bacteria)))$avg.width
 }
 nr_clusters_bacteria <- which(tmp.si == max(tmp.si, na.rm = TRUE))
 
 tmp.si <- c()
 for(i in 2:(nrow(pc_cluster_mixed)-1)){
   tmp.si[i] <- pam(pc_cluster_mixed, k=i)$silinfo$avg.width
-  # tmp <- eclust(pc_cluster_mixed, "kmeans", k = i,
-  #                                     nstart = 25, graph = FALSE)
-  # tmp.si[i] <- summary(silhouette(tmp$cluster, dist(pc_cluster_mixed)))$avg.width
 }
 nr_clusters_mixed <- which(tmp.si == max(tmp.si, na.rm = TRUE))
 
@@ -205,20 +199,11 @@ nr_clusters_mixed <- which(tmp.si == max(tmp.si, na.rm = TRUE))
 clusters_bacteria <- pam(pc_cluster_bacteria, k=nr_clusters_bacteria)
 clusters_mixed <- pam(pc_cluster_mixed, k=nr_clusters_mixed)
 
-# clusters_bacteria <- eclust(pc_cluster_bacteria, "kmeans", k = nr_clusters_bacteria,
-#        nstart = 25, graph = FALSE)
-# clusters_mixed <- eclust(pc_cluster_mixed, "kmeans", k = nr_clusters_mixed,
-#                             nstart = 25, graph = FALSE)
 # # Extract cluster labels
 cluster_labels_bacteria <- data.frame(Sample = names(clusters_bacteria$clustering),
                                       cluster_label = clusters_bacteria$clustering)
 cluster_labels_mixed <- data.frame(Sample = names(clusters_mixed$clustering),
                                       cluster_label = clusters_mixed$clustering)
-
-# cluster_labels_bacteria <- data.frame(Sample = names(clusters_bacteria$cluster), 
-#                                       cluster_label = clusters_bacteria$cluster)
-# cluster_labels_mixed <- data.frame(Sample = names(clusters_mixed$cluster), 
-#                                    cluster_label = clusters_mixed$cluster)
 
 # Merge count and phenotypic diversity data in one file
 results_stability <- left_join(counts_stability, diversity_stability, by = c("Sample" = "Sample_names"))
@@ -241,7 +226,15 @@ results_bacteria <- data.frame(results_bacteria, Time = as.numeric(as.character(
 results_mixed <- data.frame(results_mixed, Time = as.numeric(as.character(meta_mixed$X1)))
 
 # Calculate mean and sd of HNA, count and diversity based on first 15 minutes of run time
-# do this for both bacteria and mixed contamination run
+# For the bacteria and mixed contaminations. Consider the entire run for the stability
+# experiment.
+mean_stab_HNA_s <- mean(results_stability$HNA_cells/results_stability$Total_cells)
+mean_stab_count_s <- mean(results_stability$Total_cells)
+mean_stab_D2_s <- mean(results_stability$D2)
+sd_stab_HNA_s <- sd(results_stability$HNA_cells/results_stability$Total_cells)
+sd_stab_count_s <- sd(results_stability$Total_cells)
+sd_stab_D2_s <- sd(results_stability$D2)
+
 mean_stab_HNA_b <- mean(results_bacteria$HNA_cells[1:15]/results_bacteria$Total_cells[1:15])
 mean_stab_count_b <- mean(results_bacteria$Total_cells[1:15])
 mean_stab_D2_b <- mean(results_bacteria$D2[1:15])
@@ -257,10 +250,13 @@ sd_stab_count_m <- sd(results_mixed$Total_cells[1:15])
 sd_stab_D2_m <- sd(results_mixed$D2[1:15])
 
 # Add column to results indicating difference between stability run and observed values
-results_bacteria <- data.frame(results_bacteria, diff_HNA = abs(results_bacteria$HNA_cells-mean_stab_HNA_b)/sd_stab_HNA_b, 
+results_stability <- data.frame(results_stability, diff_HNA = abs(results_stability$HNA_cells/results_stability$Total_cells-mean_stab_HNA_s)/sd_stab_HNA_s, 
+                            diff_count = abs(results_stability$Total_cells-mean_stab_count_s)/sd_stab_count_s, 
+                            diff_D2 = abs(results_stability$D2-mean_stab_D2_s)/sd_stab_D2_s)
+results_bacteria <- data.frame(results_bacteria, diff_HNA = abs(results_bacteria$HNA_cells/results_bacteria$Total_cells-mean_stab_HNA_b)/sd_stab_HNA_b, 
                                diff_count = abs(results_bacteria$Total_cells-mean_stab_count_b)/sd_stab_count_b, 
                                diff_D2 = abs(results_bacteria$D2-mean_stab_D2_b)/sd_stab_D2_b)
-results_mixed <- data.frame(results_mixed, diff_HNA = abs(results_mixed$HNA_cells-mean_stab_HNA_m)/sd_stab_HNA_m, 
+results_mixed <- data.frame(results_mixed, diff_HNA = abs(results_mixed$HNA_cells/results_mixed$Total_cells-mean_stab_HNA_m)/sd_stab_HNA_m, 
                             diff_count = abs(results_mixed$Total_cells-mean_stab_count_m)/sd_stab_count_m, 
                             diff_D2 = abs(results_mixed$D2-mean_stab_D2_m)/sd_stab_D2_m)
 # # Import clustered data
@@ -299,55 +295,75 @@ FL1_stability <- data.frame(FL1 = asinh(exprs(original_data[[4]])[,9]),
                             Time = exprs(original_data[[4]])[,14])
 
 p_FL1 <- ggplot(FL1_stability, aes(x = Time, y = FL1))+
-  geom_density_2d(n=100, alpha = 0.5)+ 
   stat_density_2d(geom = "raster", aes(fill = ..density..), contour = FALSE, n = 100)+
-  ggplot2::scale_fill_distiller(palette="RdBu", na.value="white",
-                                trans = "sqrt")+
-  labs(y = "Green fluorescence intensity (FL1-H)")+
+  ggplot2::scale_fill_distiller(palette="Greens", na.value="white",
+                                direction = 1, type ="div")+
+  labs(y = "")+
   theme_bw()+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.text.y=element_text(size=14),
+        plot.title = element_text(hjust = 0,size=18))+
+  ggtitle("(A) Green fluorescence intensity (FL1-H)")+
   ylim(8,13)+
-  guides(fill=FALSE)
-  
-p_density <-  ggplot(results_stability, aes(x = as.numeric(Time), y = Total_cells, fill = diff_count))+
-  geom_point(shape=21, size = 4, alpha = 0.5)+
-  scale_fill_distiller(palette="RdBu")+
-  theme_bw()+
-  ylim(0,100)+
-  labs(y="Total cell density (cells/µL)", fill = "Deviation (s.d.)")+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
-  geom_line(color="black", alpha = 0.9)
+  guides(fill=FALSE)+
+  xlim(0,max(results_stability$Time*60/0.1))+
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80)*60/0.1)
 
-p_HNA <-  ggplot(results_stability, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
+p_density <- ggplot(results_stability, aes(x = as.numeric(Time), y = Total_cells, fill = diff_count))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
-  scale_fill_distiller(palette="RdBu")+
+  scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
   ylim(0,100)+
-  labs(y="% HNA cells", fill = "Deviation (s.d.)")+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
-  geom_line(color="black", alpha = 0.9)
+  labs(y="", fill = "Deviation (s.d.)")+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.text.y=element_text(size=14),
+        plot.title = element_text(hjust = 0, size=18))+
+  ggtitle(bquote("(B) Total cell density (cells µL"^{-1}*")") )+
+  geom_line(color="black", alpha = 0.9)+
+  xlim(0,max(results_stability$Time))+
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
 
 p_diversity <-  ggplot(results_stability, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
-  scale_fill_distiller(palette="RdBu")+
+  scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
-  ylim(1000,3350)+
-  labs(y="Phenotypic diversity", fill = "Deviation (s.d.)")+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  ylim(900,3350)+
+  labs(y="", fill = "Deviation (s.d.)")+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.text=element_text(size=14),
+        plot.title = element_text(hjust = 0, size=18))+
+  labs(y="", x = "Time (min.)")+
+  ggtitle("(C) Phenotypic diversity index (a.u.)")+
   geom_line(color="black", alpha = 0.9)+
-  geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)
+  geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)+
+  xlim(0,max(results_stability$Time))+
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
 
-ggarrange(p_FL1, p_density, p_diversity, ncol=1)
+p_HNA <- ggplot(results_stability, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
+  geom_point(shape=21, size = 4, alpha = 0.5)+
+  scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
+  theme_bw()+
+  ylim(0,100)+
+  labs(y="", fill = "Deviation (s.d.)", x = "Time (min.)")+
+  ggtitle("(D) % HNA cells")+
+  theme(axis.text=element_text(size=14),
+        axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
+  geom_line(color="black", alpha = 0.9)+
+  xlim(0,max(results_stability$Time))+
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
+
+png("Fig1.png", res=500, height = 10, width = 10, units="in")
+ggarrange(p_FL1, p_density, p_diversity, p_HNA, ncol=1)
+dev.off()
 
 # Create bacteria contamination plots
 FL1_bacteria <- data.frame(FL1 = asinh(exprs(original_data[[1]])[,9]),
                             Time = exprs(original_data[[1]])[,14])
 
-p_FL1 <- ggplot(FL1_bacteria, aes(x = Time, y = FL1))+
-  geom_density_2d(n=100, alpha = 0.5, contour = FALSE)+ 
+p_FL1_b <- ggplot(FL1_bacteria, aes(x = Time, y = FL1))+
   stat_density_2d(geom = "raster", aes(fill = ..density..), contour = FALSE, n = 100)+
-  ggplot2::scale_fill_distiller(palette="RdBu", na.value="white",
-                                trans = "sqrt")+
+  ggplot2::scale_fill_distiller(palette="Greens", na.value="white",
+                                direction = 1, type ="div")+
   labs(y = "")+
   theme_bw()+
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
@@ -357,9 +373,9 @@ p_FL1 <- ggplot(FL1_bacteria, aes(x = Time, y = FL1))+
   ylim(8,13)+
   guides(fill=FALSE)+
   xlim(0,max(results_bacteria$Time*60/0.1))+
-  scale_x_continuous(breaks=c(0, 25, 50, 75)*60/0.1)
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80)*60/0.1)
 
-p_density <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = Total_cells, fill = diff_count))+
+p_density_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = Total_cells, fill = diff_count))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
@@ -368,11 +384,12 @@ p_density <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = Total_cells
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18))+
-  ggtitle("(B) Total cell density (cells/µL)")+
+  ggtitle(bquote("(B) Total cell density (cells µL"^{-1}*")") )+
   geom_line(color="black", alpha = 0.9)+
-  xlim(0,max(results_bacteria$Time))
+  xlim(0,max(results_bacteria$Time))+
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
 
-# p_HNA <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
+# p_HNA_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
 #   geom_point(shape=21, size = 4, alpha = 0.5)+
 #   scale_fill_distiller(palette="RdBu")+
 #   theme_bw()+
@@ -382,35 +399,37 @@ p_density <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = Total_cells
 #   geom_line(color="black", alpha = 0.9)+
 #   xlim(0,max(results_bacteria$Time))
 
-p_diversity <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
+p_diversity_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
-  ylim(1000,3350)+
+  ylim(900,3350)+
   labs(y="", fill = "Deviation (s.d.)")+
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18))+
-  ggtitle("(C) Phenotypic diversity")+
+  ggtitle("(C) Phenotypic diversity index (a.u.)")+
   geom_line(color="black", alpha = 0.9)+
   geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)+
-  xlim(0,max(results_bacteria$Time))
+  xlim(0,max(results_bacteria$Time))+
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
 
-p_cluster <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = cluster_label))+
+p_cluster_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = cluster_label))+
   geom_point(shape=21, size = 4, alpha = 0.5, aes(fill = factor(cluster_label)))+
-  scale_fill_manual(values = c("blue","red","red","red"))+
+  scale_fill_manual(values = c("#2166AC","#33A02C","#6A3D9A"))+
   theme_bw()+
   theme(axis.text=element_text(size=14),
         axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
   labs(y="", x = "Time (min.)")+
-  ggtitle("(D) Physiological clusters")+
+  ggtitle("(D) Phenotypic community type")+
   ylim(0,3.5)+
   geom_line(color="black", alpha = 0.9)+
   guides(fill = FALSE)+
-  xlim(0,max(results_bacteria$Time))
+  xlim(0,max(results_bacteria$Time))+
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
 
-png("test_fig.png", res=500, height = 10, width = 10, units="in")
-ggarrange(p_FL1, p_density, p_diversity, p_cluster, ncol=1)
+png("Fig2.png", res=500, height = 10, width = 10, units="in")
+ggarrange(p_FL1_b, p_density_b, p_diversity_b, p_cluster_b, ncol=1)
 dev.off()
 
 # Create mixed contamination plots
@@ -418,10 +437,9 @@ FL1_mixed <- data.frame(FL1 = asinh(exprs(original_data[[2]])[,9]),
                            Time = exprs(original_data[[2]])[,14])
 
 p_FL1_mixed <- ggplot(FL1_mixed, aes(x = Time, y = FL1))+
-  geom_density_2d(n=100, alpha = 0.5, contour = FALSE)+ 
   stat_density_2d(geom = "raster", aes(fill = ..density..), contour = FALSE, n = 100)+
   ggplot2::scale_fill_distiller(palette="Greens", na.value="white",
-                                trans = "sqrt", direction = -1)+
+                               direction = 1, type ="div")+
   labs(y = "")+
   theme_bw()+
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
@@ -442,7 +460,7 @@ p_density_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = Total_ce
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18))+
-  ggtitle("(B) Total cell density (cells/µL)")+
+  ggtitle(bquote("(B) Total cell density (cells µL"^{-1}*")") )+
   geom_line(color="black", alpha = 0.9)+
   xlim(0, 80)
 
@@ -460,29 +478,29 @@ p_diversity_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fi
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
-  ylim(1000,3350)+
+  ylim(900,3350)+
   labs(y="", fill = "Deviation (s.d.)")+
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18))+
-  ggtitle("(C) Phenotypic diversity")+
+  ggtitle("(C) Phenotypic diversity index (a.u.)")+
   geom_line(color="black", alpha = 0.9)+
   geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)+
   xlim(0,80)
 
 p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_label))+
   geom_point(shape=21, size = 4, alpha = 0.5, aes(fill = factor(cluster_label)))+
-  scale_fill_manual(values = c("blue","red","red","red","red","red","red","red"))+
+  scale_fill_manual(values = c("#2166AC","#33A02C","#E31A1C","#FF7F00","#6A3D9A"))+
   theme_bw()+
   theme(axis.text=element_text(size=14),
         axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
   labs(y="", x = "Time (min.)")+
-  ggtitle("(D) Physiological clusters")+
+  ggtitle("(D) Phenotypic community type")+
   ylim(0,5.5)+
   geom_line(color="black", alpha = 0.9)+
   guides(fill = FALSE)+
   xlim(0,80)
 
-png("test_fig2.png", res=500, height = 10, width = 10, units="in")
+png("Fig3.png", res=500, height = 10, width = 10, units="in")
 ggarrange(p_FL1_mixed, p_density_mixed, p_diversity_mixed, p_cluster_mixed, ncol=1)
 dev.off()
