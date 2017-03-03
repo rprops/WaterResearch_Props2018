@@ -154,19 +154,13 @@ mixed_FCS <- transform(mixed_FCS ,`FL1-H`=mytrans(`FL1-H`),
                            `FSC-H`=mytrans(`FSC-H`))
 
 # Run phenotypic diversity analysis
-diversity_stability <- Diversity_rf(stability_FCS, R = 3, param = param, d = 3)
-diversity_bacteria <- Diversity_rf(bacteria_FCS, R = 3, param = param, d = 3)
-diversity_mixed <- Diversity_rf(mixed_FCS, R = 3, param = param, d = 3)
+diversity_stability <- Diversity_rf(stability_FCS, R = 100, param = param, d = 3)
+diversity_bacteria <- Diversity_rf(bacteria_FCS, R = 100, param = param, d = 3)
+diversity_mixed <- Diversity_rf(mixed_FCS, R = 100, param = param, d = 3)
 
 # Create fingerprints for cluster analysis
 fp_bacteria <- flowBasis(bacteria_FCS, param=param, nbin = 128, bw = 0.01, normalize = function(x) x)
 fp_mixed <- flowBasis(mixed_FCS, param=param, nbin = 128, bw = 0.01, normalize = function(x) x)
-
-# For exporting features
-# write.table(t(fp_bacteria@basis),file="bacteria_60_128.txt",col.names=FALSE)
-# write.table(t(fp_mixed@basis),file="mixed_60_128.txt",col.names=FALSE)
-# write.table(rownames(fp_bacteria@basis), file="bacteria_names_60.txt",row.names=FALSE,col.names=FALSE)
-# write.table(rownames(fp_mixed@basis), file="mixed_names_60.txt",row.names=FALSE,col.names=FALSE)
 
 # Perform PCA to reduce number of features in fingerprint
 pca_bacteria <- prcomp(fp_bacteria@basis)
@@ -181,7 +175,6 @@ pc_cluster_bacteria <- pca_bacteria$x[, 1:nr_pc_bacteria]
 pc_cluster_mixed <- pca_mixed$x[, 1:nr_pc_mixed]
 
 # Evaluate number of robust clusters by means of silhouette index
-
 tmp.si <- c()
 for(i in 2:(nrow(pc_cluster_bacteria)-1)){
   tmp.si[i] <- pam(pc_cluster_bacteria, k=i)$silinfo$avg.width
@@ -193,7 +186,6 @@ for(i in 2:(nrow(pc_cluster_mixed)-1)){
   tmp.si[i] <- pam(pc_cluster_mixed, k=i)$silinfo$avg.width
 }
 nr_clusters_mixed <- which(tmp.si == max(tmp.si, na.rm = TRUE))
-
 
 # Cluster samples and export cluster labels
 clusters_bacteria <- pam(pc_cluster_bacteria, k=nr_clusters_bacteria)
@@ -259,35 +251,6 @@ results_bacteria <- data.frame(results_bacteria, diff_HNA = abs(results_bacteria
 results_mixed <- data.frame(results_mixed, diff_HNA = abs(results_mixed$HNA_cells/results_mixed$Total_cells-mean_stab_HNA_m)/sd_stab_HNA_m, 
                             diff_count = abs(results_mixed$Total_cells-mean_stab_count_m)/sd_stab_count_m, 
                             diff_D2 = abs(results_mixed$D2-mean_stab_D2_m)/sd_stab_D2_m)
-# # Import clustered data
-# # These were generated on a 64x64 fingerprint by performing PCA on the bins
-# clusters_bacteria <- read.csv("clustering_data/Bacteria_run_silhouette.csv", stringsAsFactors = FALSE)
-# clusters_mixed <- read.csv("clustering_data/Mixed_run_silhouette.csv", stringsAsFactors = FALSE)
-# 
-# # formate names correctly
-# clusters_bacteria$X <- rm_between(clusters_bacteria$X, "'", "'", extract=TRUE)
-# clusters_mixed$X <- rm_between(clusters_mixed$X, "'", "'", extract=TRUE)
-# order_bacteria <- as.numeric(gsub(clusters_bacteria$X, pattern = "_.*", replacement=""))
-# order_mixed <- as.numeric(gsub(clusters_mixed$X, pattern = "_.*", replacement=""))
-# clusters_mixed$X <- gsub(clusters_mixed$X, pattern = "mixed", replacement="Mixed_Run")
-# clusters_bacteria$X <- gsub(clusters_bacteria$X, pattern = "Run1", replacement="Run")
-# 
-# # Sort rows of cluster data
-# clusters_mixed <- clusters_mixed[order(order_mixed),]
-# clusters_bacteria <- clusters_bacteria[order(order_bacteria),]
-# 
-# # Replace sample numbers by correct ones
-# clusters_bacteria$X <- paste(seq(2:nrow(clusters_bacteria)),"_60_", 
-#                              gsub(clusters_bacteria$X, pattern = ".*_60_", replacement=""), sep="")
-# clusters_mixed$X <- paste(seq(2:nrow(clusters_mixed)),"_60_", 
-#                              gsub(clusters_mixed$X, pattern = ".*_60_", replacement=""), sep="")
-# # Only take cluster allocation and sample name
-# clusters_bacteria <- data.frame(Sample = clusters_bacteria$X, cluster_alloc = clusters_bacteria$Cluster.prediction)
-# clusters_mixed <- data.frame(Sample = clusters_mixed$X, cluster_alloc = clusters_mixed$Cluster.prediction)
-# 
-# # Merge data with other results
-# results_bacteria <- left_join(results_bacteria, clusters_bacteria, by = "Sample")
-# results_mixed <- left_join(results_mixed, clusters_mixed, by = "Sample")
 
 # Create stability plots
 original_data <- read.flowSet(path = "original_data")
@@ -321,7 +284,8 @@ p_density <- ggplot(results_stability, aes(x = as.numeric(Time), y = Total_cells
   ggtitle(bquote("(B) Total cell density (cells µL"^{-1}*")") )+
   geom_line(color="black", alpha = 0.9)+
   xlim(0,max(results_stability$Time))+
-  scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80))+
+  geom_smooth(method = "lm", color = 'black', alpha = 0.5)
 
 p_diversity <-  ggplot(results_stability, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
@@ -496,10 +460,10 @@ p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_l
         axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
   labs(y="", x = "Time (min.)")+
   ggtitle("(D) Phenotypic community type")+
-  ylim(0,5.5)+
   geom_line(color="black", alpha = 0.9)+
   guides(fill = FALSE)+
-  xlim(0,80)
+  xlim(0,80)+
+  scale_y_continuous(breaks=c(0:5), limits = c(0,5.5))
 
 png("Fig3.png", res=500, height = 10, width = 10, units="in")
 ggarrange(p_FL1_mixed, p_density_mixed, p_diversity_mixed, p_cluster_mixed, ncol=1)
