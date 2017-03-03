@@ -6,7 +6,9 @@ library("gridExtra")
 library("egg")
 library("qdapRegex")
 library("scales")
-
+library("cluster")
+library("factoextra")
+source("functions.R")
 # # Bin the data
 # 
 # # Import original data
@@ -36,6 +38,11 @@ library("scales")
 stability_FCS <- read.flowSet(path = "binned_data/Stability_tap1_60")
 bacteria_FCS <- read.flowSet(path = "binned_data/Bacteria_Run_60")
 mixed_FCS <- read.flowSet(path = "binned_data/Mixed_Run_60")
+
+# Remove last sample as this is a null observation (no or little cells).
+stability_FCS <- stability_FCS[-58]
+bacteria_FCS <- bacteria_FCS[-86]
+mixed_FCS <- mixed_FCS[-74]
 
 # Transform parameters by asinh transformation and select primary parameters of interest
 param=c("FL1-H", "FL3-H","SSC-H","FSC-H")
@@ -151,6 +158,67 @@ diversity_stability <- Diversity_rf(stability_FCS, R = 3, param = param, d = 3)
 diversity_bacteria <- Diversity_rf(bacteria_FCS, R = 3, param = param, d = 3)
 diversity_mixed <- Diversity_rf(mixed_FCS, R = 3, param = param, d = 3)
 
+# Create fingerprints for cluster analysis
+fp_bacteria <- flowBasis(bacteria_FCS, param=param, nbin = 128, bw = 0.01, normalize = function(x) x)
+fp_mixed <- flowBasis(mixed_FCS, param=param, nbin = 128, bw = 0.01, normalize = function(x) x)
+
+# For exporting features
+# write.table(t(fp_bacteria@basis),file="bacteria_60_128.txt",col.names=FALSE)
+# write.table(t(fp_mixed@basis),file="mixed_60_128.txt",col.names=FALSE)
+# write.table(rownames(fp_bacteria@basis), file="bacteria_names_60.txt",row.names=FALSE,col.names=FALSE)
+# write.table(rownames(fp_mixed@basis), file="mixed_names_60.txt",row.names=FALSE,col.names=FALSE)
+
+# Perform PCA to reduce number of features in fingerprint
+pca_bacteria <- prcomp(fp_bacteria@basis, scale. = TRUE, center = TRUE)
+pca_mixed <- prcomp(fp_mixed@basis, scale. = TRUE, center = TRUE)
+
+# Only retain PC which explain x% of the variance
+thresh <- 0.9
+nr_pc_bacteria <- min(which((cumsum(vegan::eigenvals(pca_bacteria)/sum(vegan::eigenvals(pca_bacteria)))>thresh)==TRUE))
+nr_pc_mixed <- min(which((cumsum(vegan::eigenvals(pca_mixed)/sum(vegan::eigenvals(pca_mixed)))>thresh)==TRUE))
+
+pc_cluster_bacteria <- pca_bacteria$x[, 1:nr_pc_bacteria]
+pc_cluster_mixed <- pca_mixed$x[, 1:nr_pc_mixed]
+
+# Evaluate number of robust clusters by means of silhouette index
+
+tmp.si <- c()
+for(i in 2:(nrow(pc_cluster_bacteria)-1)){
+  tmp.si[i] <- pam(pc_cluster_bacteria, k=i )$silinfo$avg.width
+  # tmp <- eclust(pc_cluster_bacteria, "kmeans", k = i,
+  #               nstart = 25, graph = FALSE)
+  # tmp.si[i] <- summary(silhouette(tmp$cluster, dist(pc_cluster_bacteria)))$avg.width
+}
+nr_clusters_bacteria <- which(tmp.si == max(tmp.si, na.rm = TRUE))
+
+tmp.si <- c()
+for(i in 2:(nrow(pc_cluster_mixed)-1)){
+  tmp.si[i] <- pam(pc_cluster_mixed, k=i)$silinfo$avg.width
+  # tmp <- eclust(pc_cluster_mixed, "kmeans", k = i,
+  #                                     nstart = 25, graph = FALSE)
+  # tmp.si[i] <- summary(silhouette(tmp$cluster, dist(pc_cluster_mixed)))$avg.width
+}
+nr_clusters_mixed <- which(tmp.si == max(tmp.si, na.rm = TRUE))
+
+# Cluster samples and export cluster labels
+clusters_bacteria <- pam(pc_cluster_bacteria, k=nr_clusters_bacteria)
+clusters_mixed <- pam(pc_cluster_mixed, k=nr_clusters_mixed)
+
+# clusters_bacteria <- eclust(pc_cluster_bacteria, "kmeans", k = nr_clusters_bacteria,
+#        nstart = 25, graph = FALSE)
+# clusters_mixed <- eclust(pc_cluster_mixed, "kmeans", k = nr_clusters_mixed,
+#                             nstart = 25, graph = FALSE)
+# # Extract cluster labels
+cluster_labels_bacteria <- data.frame(Sample = names(clusters_bacteria$clustering),
+                                      cluster_label = clusters_bacteria$clustering)
+cluster_labels_mixed <- data.frame(Sample = names(clusters_mixed$clustering),
+                                      cluster_label = clusters_mixed$clustering)
+
+# cluster_labels_bacteria <- data.frame(Sample = names(clusters_bacteria$cluster), 
+#                                       cluster_label = clusters_bacteria$cluster)
+# cluster_labels_mixed <- data.frame(Sample = names(clusters_mixed$cluster), 
+#                                    cluster_label = clusters_mixed$cluster)
+
 # Merge count and phenotypic diversity data in one file
 results_stability <- left_join(counts_stability, diversity_stability, by = c("Sample" = "Sample_names"))
 results_stability <- results_stability[results_stability$Total_cells > 0, ]
@@ -158,6 +226,10 @@ results_bacteria <- left_join(counts_bacteria, diversity_bacteria, by = c("Sampl
 results_bacteria <- results_bacteria[results_bacteria$Total_cells > 0, ]
 results_mixed <- left_join(counts_mixed, diversity_mixed, by = c("Sample" = "Sample_names"))
 results_mixed <- results_mixed[results_mixed$Total_cells > 0, ]
+
+# Merge results with cluster labels
+results_bacteria <- left_join(results_bacteria, cluster_labels_bacteria, by = "Sample")
+results_mixed <- left_join(results_mixed, cluster_labels_mixed, by = "Sample")
 
 # Add time points
 meta_stability <- data.frame(do.call(rbind, lapply(strsplit(flowCore::sampleNames(stability_FCS),"_"), rbind)))
@@ -167,53 +239,58 @@ results_stability <- data.frame(results_stability, Time = as.numeric(as.characte
 results_bacteria <- data.frame(results_bacteria, Time = as.numeric(as.character(meta_bacteria$X1)))
 results_mixed <- data.frame(results_mixed, Time = as.numeric(as.character(meta_mixed$X1)))
 
-# Calculate mean and sd of HNA, count and diversity
-mean_stab_HNA <- mean(results_stability$HNA_cells)
-mean_stab_count <- mean(results_stability$Total_cells)
-mean_stab_D2 <- mean(results_stability$D2)
-sd_stab_HNA <- sd(results_stability$HNA_cells)
-sd_stab_count <- sd(results_stability$Total_cells)
-sd_stab_D2 <- sd(results_stability$D2)
+# Calculate mean and sd of HNA, count and diversity based on first 15 minutes of run time
+# do this for both bacteria and mixed contamination run
+mean_stab_HNA_b <- mean(results_bacteria$HNA_cells[1:15]/results_bacteria$Total_cells[1:15])
+mean_stab_count_b <- mean(results_bacteria$Total_cells[1:15])
+mean_stab_D2_b <- mean(results_bacteria$D2[1:15])
+sd_stab_HNA_b <- sd(results_bacteria$HNA_cells[1:15]/results_bacteria$Total_cells[1:15])
+sd_stab_count_b <- sd(results_bacteria$Total_cells[1:15])
+sd_stab_D2_b <- sd(results_bacteria$D2[1:15])
+
+mean_stab_HNA_m <- mean(results_mixed$HNA_cells[1:15]/results_mixed$Total_cells[1:15])
+mean_stab_count_m <- mean(results_mixed$Total_cells[1:15])
+mean_stab_D2_m <- mean(results_mixed$D2[1:15])
+sd_stab_HNA_m <- sd(results_mixed$HNA_cells[1:15]/results_mixed$Total_cells[1:15])
+sd_stab_count_m <- sd(results_mixed$Total_cells[1:15])
+sd_stab_D2_m <- sd(results_mixed$D2[1:15])
 
 # Add column to results indicating difference between stability run and observed values
-results_stability <- data.frame(results_stability, diff_HNA = abs(results_stability$HNA_cells-mean_stab_HNA)/sd_stab_HNA, 
-                                diff_count = abs(results_stability$Total_cells-mean_stab_count)/sd_stab_count, 
-                                diff_D2 = abs(results_stability$D2-mean_stab_D2)/sd_stab_D2)
-results_bacteria <- data.frame(results_bacteria, diff_HNA = abs(results_bacteria$HNA_cells-mean_stab_HNA)/sd_stab_HNA, 
-                               diff_count = abs(results_bacteria$Total_cells-mean_stab_count)/sd_stab_count, 
-                               diff_D2 = abs(results_bacteria$D2-mean_stab_D2)/sd_stab_D2)
-results_mixed <- data.frame(results_mixed, diff_HNA = abs(results_mixed$HNA_cells-mean_stab_HNA)/sd_stab_HNA, 
-                            diff_count = abs(results_mixed$Total_cells-mean_stab_count)/sd_stab_count, 
-                            diff_D2 = abs(results_mixed$D2-mean_stab_D2)/sd_stab_D2)
-# Import clustered data
-# These were generated on a 64x64 fingerprint by performing PCA on the bins
-clusters_bacteria <- read.csv("clustering_data/Bacteria_run_silhouette.csv", stringsAsFactors = FALSE)
-clusters_mixed <- read.csv("clustering_data/Mixed_run_silhouette.csv", stringsAsFactors = FALSE)
-
-# formate names correctly
-clusters_bacteria$X <- rm_between(clusters_bacteria$X, "'", "'", extract=TRUE)
-clusters_mixed$X <- rm_between(clusters_mixed$X, "'", "'", extract=TRUE)
-order_bacteria <- as.numeric(gsub(clusters_bacteria$X, pattern = "_.*", replacement=""))
-order_mixed <- as.numeric(gsub(clusters_mixed$X, pattern = "_.*", replacement=""))
-clusters_mixed$X <- gsub(clusters_mixed$X, pattern = "mixed", replacement="Mixed_Run")
-clusters_bacteria$X <- gsub(clusters_bacteria$X, pattern = "Run1", replacement="Run")
-
-# Sort rows of cluster data
-clusters_mixed <- clusters_mixed[order(order_mixed),]
-clusters_bacteria <- clusters_bacteria[order(order_bacteria),]
-
-# Replace sample numbers by correct ones
-clusters_bacteria$X <- paste(seq(2:nrow(clusters_bacteria)),"_60_", 
-                             gsub(clusters_bacteria$X, pattern = ".*_60_", replacement=""), sep="")
-clusters_mixed$X <- paste(seq(2:nrow(clusters_mixed)),"_60_", 
-                             gsub(clusters_mixed$X, pattern = ".*_60_", replacement=""), sep="")
-# Only take cluster allocation and sample name
-clusters_bacteria <- data.frame(Sample = clusters_bacteria$X, cluster_alloc = clusters_bacteria$Cluster.prediction)
-clusters_mixed <- data.frame(Sample = clusters_mixed$X, cluster_alloc = clusters_mixed$Cluster.prediction)
-
-# Merge data with other results
-results_bacteria <- left_join(results_bacteria, clusters_bacteria, by = "Sample")
-results_mixed <- left_join(results_mixed, clusters_mixed, by = "Sample")
+results_bacteria <- data.frame(results_bacteria, diff_HNA = abs(results_bacteria$HNA_cells-mean_stab_HNA_b)/sd_stab_HNA_b, 
+                               diff_count = abs(results_bacteria$Total_cells-mean_stab_count_b)/sd_stab_count_b, 
+                               diff_D2 = abs(results_bacteria$D2-mean_stab_D2_b)/sd_stab_D2_b)
+results_mixed <- data.frame(results_mixed, diff_HNA = abs(results_mixed$HNA_cells-mean_stab_HNA_m)/sd_stab_HNA_m, 
+                            diff_count = abs(results_mixed$Total_cells-mean_stab_count_m)/sd_stab_count_m, 
+                            diff_D2 = abs(results_mixed$D2-mean_stab_D2_m)/sd_stab_D2_m)
+# # Import clustered data
+# # These were generated on a 64x64 fingerprint by performing PCA on the bins
+# clusters_bacteria <- read.csv("clustering_data/Bacteria_run_silhouette.csv", stringsAsFactors = FALSE)
+# clusters_mixed <- read.csv("clustering_data/Mixed_run_silhouette.csv", stringsAsFactors = FALSE)
+# 
+# # formate names correctly
+# clusters_bacteria$X <- rm_between(clusters_bacteria$X, "'", "'", extract=TRUE)
+# clusters_mixed$X <- rm_between(clusters_mixed$X, "'", "'", extract=TRUE)
+# order_bacteria <- as.numeric(gsub(clusters_bacteria$X, pattern = "_.*", replacement=""))
+# order_mixed <- as.numeric(gsub(clusters_mixed$X, pattern = "_.*", replacement=""))
+# clusters_mixed$X <- gsub(clusters_mixed$X, pattern = "mixed", replacement="Mixed_Run")
+# clusters_bacteria$X <- gsub(clusters_bacteria$X, pattern = "Run1", replacement="Run")
+# 
+# # Sort rows of cluster data
+# clusters_mixed <- clusters_mixed[order(order_mixed),]
+# clusters_bacteria <- clusters_bacteria[order(order_bacteria),]
+# 
+# # Replace sample numbers by correct ones
+# clusters_bacteria$X <- paste(seq(2:nrow(clusters_bacteria)),"_60_", 
+#                              gsub(clusters_bacteria$X, pattern = ".*_60_", replacement=""), sep="")
+# clusters_mixed$X <- paste(seq(2:nrow(clusters_mixed)),"_60_", 
+#                              gsub(clusters_mixed$X, pattern = ".*_60_", replacement=""), sep="")
+# # Only take cluster allocation and sample name
+# clusters_bacteria <- data.frame(Sample = clusters_bacteria$X, cluster_alloc = clusters_bacteria$Cluster.prediction)
+# clusters_mixed <- data.frame(Sample = clusters_mixed$X, cluster_alloc = clusters_mixed$Cluster.prediction)
+# 
+# # Merge data with other results
+# results_bacteria <- left_join(results_bacteria, clusters_bacteria, by = "Sample")
+# results_mixed <- left_join(results_mixed, clusters_mixed, by = "Sample")
 
 # Create stability plots
 original_data <- read.flowSet(path = "original_data")
@@ -278,24 +355,33 @@ FL1_bacteria <- data.frame(FL1 = asinh(exprs(original_data[[1]])[,9]),
                             Time = exprs(original_data[[1]])[,14])
 
 p_FL1 <- ggplot(FL1_bacteria, aes(x = Time, y = FL1))+
-  geom_density_2d(n=100, alpha = 0.5)+ 
+  geom_density_2d(n=100, alpha = 0.5, contour = FALSE)+ 
   stat_density_2d(geom = "raster", aes(fill = ..density..), contour = FALSE, n = 100)+
   ggplot2::scale_fill_distiller(palette="RdBu", na.value="white",
                                 trans = "sqrt")+
-  labs(y = "Green fluorescence intensity (FL1-H)")+
+  labs(y = "")+
   theme_bw()+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.text.y=element_text(size=14),
+        plot.title = element_text(hjust = 0,size=18))+
+  ggtitle("(A) Green fluorescence intensity (FL1-H)")+
   ylim(8,13)+
-  guides(fill=FALSE)
+  guides(fill=FALSE)+
+  xlim(0,max(results_bacteria$Time*60/0.1))+
+  scale_x_continuous(breaks=c(0, 25, 50, 75)*60/0.1)
 
 p_density <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = Total_cells, fill = diff_count))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
-  scale_fill_distiller(palette="RdBu", limits = c(1,6), breaks=c(1,3,5), oob=squish)+
+  scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
-  ylim(0,300)+
-  labs(y="Total cell density (cells/µL)", fill = "Deviation (s.d.)")+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
-  geom_line(color="black", alpha = 0.9)
+  ylim(0,250)+
+  labs(y="", fill = "Deviation (s.d.)")+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.text.y=element_text(size=14),
+        plot.title = element_text(hjust = 0, size=18))+
+  ggtitle("(B) Total cell density (cells/µL)")+
+  geom_line(color="black", alpha = 0.9)+
+  xlim(0,max(results_bacteria$Time))
 
 # p_HNA <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
 #   geom_point(shape=21, size = 4, alpha = 0.5)+
@@ -304,104 +390,114 @@ p_density <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = Total_cells
 #   ylim(0,100)+
 #   labs(y="% HNA cells", fill = "Deviation (s.d.)")+
 #   theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
-#   geom_line(color="black", alpha = 0.9)
+#   geom_line(color="black", alpha = 0.9)+
+#   xlim(0,max(results_bacteria$Time))
 
 p_diversity <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
-  scale_fill_distiller(palette="RdBu", limits = c(1,6), breaks=c(1,3,5), oob=squish)+
+  scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
   ylim(1000,3350)+
-  labs(y="Phenotypic diversity", fill = "Deviation (s.d.)")+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  labs(y="", fill = "Deviation (s.d.)")+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.text.y=element_text(size=14),
+        plot.title = element_text(hjust = 0, size=18))+
+  ggtitle("(C) Phenotypic diversity")+
   geom_line(color="black", alpha = 0.9)+
-  geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)
+  geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)+
+  xlim(0,max(results_bacteria$Time))
 
-p_cluster <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = cluster_alloc))+
-  geom_point(shape=21, size = 4, alpha = 0.5, aes(fill = factor(cluster_alloc)))+
+p_cluster <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = cluster_label))+
+  geom_point(shape=21, size = 4, alpha = 0.5, aes(fill = factor(cluster_label)))+
   scale_fill_manual(values = c("blue","red","red","red"))+
   theme_bw()+
-  labs(y="Cluster allocation", x = "Time (min.)")+
-  ylim(0,3)+
+  theme(axis.text=element_text(size=14),
+        axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
+  labs(y="", x = "Time (min.)")+
+  ggtitle("(D) Physiological clusters")+
+  ylim(0,3.5)+
   geom_line(color="black", alpha = 0.9)+
-  guides(fill = FALSE)
+  guides(fill = FALSE)+
+  xlim(0,max(results_bacteria$Time))
 
-g1 <- ggplotGrob(p_FL1)
-g2 <- ggplotGrob(p_density)
-g3 <- ggplotGrob(p_diversity)
-g4 <- ggplotGrob(p_cluster)
-fg2 <- gtable_frame(g2)
-fg3 <- gtable_frame(g3)
-fg4 <- gtable_frame(g4)
-fg234 <- gtable_frame(rbind(fg2, fg3, fg4))
-fg1 <- gtable_frame(g1)
-grid.newpage()
-combined <- rbind(fg1, fg234)
-grid.draw(combined)
+ggarrange(p_FL1, p_density, p_diversity, p_cluster, ncol=1)
 
+png("test_fig.png", res=500, height = 10, width = 10, units="in")
+ggarrange(p_FL1, p_density, p_diversity, p_cluster, ncol=1)
+dev.off()
 
 # Create mixed contamination plots
 FL1_mixed <- data.frame(FL1 = asinh(exprs(original_data[[2]])[,9]),
                            Time = exprs(original_data[[2]])[,14])
 
-p_FL1 <- ggplot(FL1_mixed, aes(x = Time, y = FL1))+
-  geom_density_2d(n=100, alpha = 0.5)+ 
+p_FL1_mixed <- ggplot(FL1_mixed, aes(x = Time, y = FL1))+
+  geom_density_2d(n=100, alpha = 0.5, contour = FALSE)+ 
   stat_density_2d(geom = "raster", aes(fill = ..density..), contour = FALSE, n = 100)+
   ggplot2::scale_fill_distiller(palette="RdBu", na.value="white",
                                 trans = "sqrt")+
-  labs(y = "Green fluorescence intensity (FL1-H)", x = "")+
-  theme_bw()+ 
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
-  ylim(8,13)+
-  guides(fill=FALSE)
-
-p_density <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = Total_cells, fill = diff_count))+
-  geom_point(shape=21, size = 4, alpha = 0.5)+
-  scale_fill_distiller(palette="RdBu", limits = c(1,3), breaks=c(1,2,3), oob=squish)+
+  labs(y = "")+
   theme_bw()+
-  ylim(0,600)+
-  labs(y="Total cell density (cells/µL)", fill = "Deviation (s.d.)")+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
-  geom_line(color="black", alpha = 0.9)
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.text.y=element_text(size=14),
+        plot.title = element_text(hjust = 0,size=18))+
+  ggtitle("(A) Green fluorescence intensity (FL1-H)")+
+  ylim(8, 13)+
+  guides(fill=FALSE)+
+  xlim(0, 80*60/0.1)+
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80)*60/0.1)
 
-# p_HNA <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
+p_density_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = Total_cells, fill = diff_count))+
+  geom_point(shape=21, size = 4, alpha = 0.5)+
+  scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
+  theme_bw()+
+  ylim(0,250)+
+  labs(y="", fill = "Deviation (s.d.)")+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.text.y=element_text(size=14),
+        plot.title = element_text(hjust = 0, size=18))+
+  ggtitle("(B) Total cell density (cells/µL)")+
+  geom_line(color="black", alpha = 0.9)+
+  xlim(0, 80)
+
+# p_HNA_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
 #   geom_point(shape=21, size = 4, alpha = 0.5)+
 #   scale_fill_distiller(palette="RdBu")+
 #   theme_bw()+
 #   ylim(0,100)+
 #   labs(y="% HNA cells", fill = "Deviation (s.d.)")+
 #   theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
-#   geom_line(color="black", alpha = 0.9)
+#   geom_line(color="black", alpha = 0.9)+
+#   xlim(0,max(results_mixed$Time))
 
-p_diversity <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
+p_diversity_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
-  scale_fill_distiller(palette="RdBu", limits = c(1,3), breaks=c(1,2,3), oob=squish)+
+  scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
   ylim(1000,3350)+
-  labs(y="Phenotypic diversity", fill = "Deviation (s.d.)")+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
+  labs(y="", fill = "Deviation (s.d.)")+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.text.y=element_text(size=14),
+        plot.title = element_text(hjust = 0, size=18))+
+  ggtitle("(C) Phenotypic diversity")+
   geom_line(color="black", alpha = 0.9)+
-  geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)
+  geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)+
+  xlim(0,80)
 
-p_cluster <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_alloc))+
-  geom_point(shape=21, size = 4, alpha = 0.5, aes(fill = factor(cluster_alloc)))+
-  scale_fill_manual(values = c("blue","red","red","red","red"))+
+p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_label))+
+  geom_point(shape=21, size = 4, alpha = 0.5, aes(fill = factor(cluster_label)))+
+  scale_fill_manual(values = c("blue","red","red","red","red","red","red","red"))+
   theme_bw()+
-  labs(y="Cluster allocation", x = "Time (min.)")+
-  ylim(0,6)+
+  theme(axis.text=element_text(size=14),
+        axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
+  labs(y="", x = "Time (min.)")+
+  ggtitle("(D) Physiological clusters")+
+  ylim(0,8)+
   geom_line(color="black", alpha = 0.9)+
-  guides(fill = FALSE)
+  guides(fill = FALSE)+
+  xlim(0,80)
 
-g1 <- ggplotGrob(p_FL1)
-g2 <- ggplotGrob(p_density)
-g3 <- ggplotGrob(p_diversity)
-g4 <- ggplotGrob(p_cluster)
-fg2 <- gtable_frame(g2)
-fg3 <- gtable_frame(g3)
-fg4 <- gtable_frame(g4)
-fg234 <- gtable_frame(rbind(fg2, fg3, fg4))
-fg1 <- gtable_frame(g1, height = unit(0.5,"null"))
-grid.newpage()
-combined <- rbind(fg1, fg234)
-png("test_fig.png", res=500, height = 10, width = 6, units="in")
-grid.arrange(combined)
+ggarrange(p_FL1_mixed, p_density_mixed, p_diversity_mixed, p_cluster_mixed, ncol=1)
+
+png("test_fig2.png", res=500, height = 10, width = 10, units="in")
+ggarrange(p_FL1_mixed, p_density_mixed, p_diversity_mixed, p_cluster_mixed, ncol=1)
 dev.off()
