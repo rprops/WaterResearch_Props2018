@@ -45,7 +45,7 @@ bacteria_FCS <- bacteria_FCS[-86]
 mixed_FCS <- mixed_FCS[-74]
 
 # Transform parameters by asinh transformation and select primary parameters of interest
-param=c("FL1-H", "FL3-H","SSC-H","FSC-H")
+param=c("FL1-H", "FL3-H", "SSC-H", "FSC-H")
 stability_FCS <- stability_FCS[,param]
 bacteria_FCS <- bacteria_FCS[,param]
 mixed_FCS <- mixed_FCS[,param]
@@ -58,7 +58,7 @@ mixed_FCS <- transform(mixed_FCS,`FL1-H`=asinh(`FL1-H`), `SSC-H`=asinh(`SSC-H`),
 
 
 # Create a PolygonGate for extracting the single-cell information
-sqrcut1 <- matrix(c(8.75,8.75,15,15,3,8,15,3),ncol=2, nrow=4)
+sqrcut1 <- matrix(c(8.5,8.5,16,16,3,7.25,16,3),ncol=2, nrow=4)
 colnames(sqrcut1) <- c("FL1-H","FL3-H")
 polyGate1 <- polygonGate(.gate=sqrcut1, filterId = "Total Cells")
 ### Creating a rectangle gate, set correct threshold here for FL1
@@ -169,8 +169,8 @@ fp_mixed <- flowBasis(mixed_FCS, param=param, nbin = 128, bw = 0.01, normalize =
 # write.table(rownames(fp_mixed@basis), file="mixed_names_60.txt",row.names=FALSE,col.names=FALSE)
 
 # Perform PCA to reduce number of features in fingerprint
-pca_bacteria <- prcomp(fp_bacteria@basis, scale. = TRUE, center = TRUE)
-pca_mixed <- prcomp(fp_mixed@basis, scale. = TRUE, center = TRUE)
+pca_bacteria <- prcomp(fp_bacteria@basis)
+pca_mixed <- prcomp(fp_mixed@basis)
 
 # Only retain PC which explain x% of the variance
 thresh <- 0.9
@@ -184,7 +184,7 @@ pc_cluster_mixed <- pca_mixed$x[, 1:nr_pc_mixed]
 
 tmp.si <- c()
 for(i in 2:(nrow(pc_cluster_bacteria)-1)){
-  tmp.si[i] <- pam(pc_cluster_bacteria, k=i )$silinfo$avg.width
+  tmp.si[i] <- pam(pc_cluster_bacteria, k=i)$silinfo$avg.width
   # tmp <- eclust(pc_cluster_bacteria, "kmeans", k = i,
   #               nstart = 25, graph = FALSE)
   # tmp.si[i] <- summary(silhouette(tmp$cluster, dist(pc_cluster_bacteria)))$avg.width
@@ -199,6 +199,7 @@ for(i in 2:(nrow(pc_cluster_mixed)-1)){
   # tmp.si[i] <- summary(silhouette(tmp$cluster, dist(pc_cluster_mixed)))$avg.width
 }
 nr_clusters_mixed <- which(tmp.si == max(tmp.si, na.rm = TRUE))
+
 
 # Cluster samples and export cluster labels
 clusters_bacteria <- pam(pc_cluster_bacteria, k=nr_clusters_bacteria)
@@ -336,19 +337,7 @@ p_diversity <-  ggplot(results_stability, aes(x = as.numeric(Time), y = D2, fill
   geom_line(color="black", alpha = 0.9)+
   geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)
 
-g1 <- ggplotGrob(p_FL1)
-g2 <- ggplotGrob(p_density)
-g3 <- ggplotGrob(p_HNA)
-g4 <- ggplotGrob(p_diversity)
-fg2 <- gtable_frame(g2)
-fg3 <- gtable_frame(g3)
-fg4 <- gtable_frame(g4)
-fg234 <- gtable_frame(rbind(fg2, fg3, fg4))
-fg1 <- gtable_frame(g1)
-grid.newpage()
-combined <- rbind(fg1, fg234)
-grid.draw(combined)
-
+ggarrange(p_FL1, p_density, p_diversity, ncol=1)
 
 # Create bacteria contamination plots
 FL1_bacteria <- data.frame(FL1 = asinh(exprs(original_data[[1]])[,9]),
@@ -420,8 +409,6 @@ p_cluster <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = cluster_labe
   guides(fill = FALSE)+
   xlim(0,max(results_bacteria$Time))
 
-ggarrange(p_FL1, p_density, p_diversity, p_cluster, ncol=1)
-
 png("test_fig.png", res=500, height = 10, width = 10, units="in")
 ggarrange(p_FL1, p_density, p_diversity, p_cluster, ncol=1)
 dev.off()
@@ -433,8 +420,8 @@ FL1_mixed <- data.frame(FL1 = asinh(exprs(original_data[[2]])[,9]),
 p_FL1_mixed <- ggplot(FL1_mixed, aes(x = Time, y = FL1))+
   geom_density_2d(n=100, alpha = 0.5, contour = FALSE)+ 
   stat_density_2d(geom = "raster", aes(fill = ..density..), contour = FALSE, n = 100)+
-  ggplot2::scale_fill_distiller(palette="RdBu", na.value="white",
-                                trans = "sqrt")+
+  ggplot2::scale_fill_distiller(palette="Greens", na.value="white",
+                                trans = "sqrt", direction = -1)+
   labs(y = "")+
   theme_bw()+
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
@@ -491,12 +478,10 @@ p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_l
         axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
   labs(y="", x = "Time (min.)")+
   ggtitle("(D) Physiological clusters")+
-  ylim(0,8)+
+  ylim(0,5.5)+
   geom_line(color="black", alpha = 0.9)+
   guides(fill = FALSE)+
   xlim(0,80)
-
-ggarrange(p_FL1_mixed, p_density_mixed, p_diversity_mixed, p_cluster_mixed, ncol=1)
 
 png("test_fig2.png", res=500, height = 10, width = 10, units="in")
 ggarrange(p_FL1_mixed, p_density_mixed, p_diversity_mixed, p_cluster_mixed, ncol=1)
