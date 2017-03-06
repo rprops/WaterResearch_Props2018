@@ -316,7 +316,7 @@ p_HNA <- ggplot(results_stability, aes(x = as.numeric(Time), y = 100*HNA_cells/T
   xlim(0,max(results_stability$Time))+
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
 
-png("Fig1.png", res=500, height = 10, width = 10, units="in")
+png("Fig2.png", res=500, height = 10, width = 10, units="in")
 ggarrange(p_FL1, p_density, p_diversity, p_HNA, ncol=1)
 dev.off()
 
@@ -392,7 +392,7 @@ p_cluster_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = cluster_la
   xlim(0,max(results_bacteria$Time))+
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
 
-png("Fig2.png", res=500, height = 10, width = 10, units="in")
+png("Fig3.png", res=500, height = 10, width = 10, units="in")
 ggarrange(p_FL1_b, p_density_b, p_diversity_b, p_cluster_b, ncol=1)
 dev.off()
 
@@ -465,6 +465,58 @@ p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_l
   xlim(0,80)+
   scale_y_continuous(breaks=c(0:5), limits = c(0,5.5))
 
-png("Fig3.png", res=500, height = 10, width = 10, units="in")
+png("Fig4.png", res=500, height = 10, width = 10, units="in")
 ggarrange(p_FL1_mixed, p_density_mixed, p_diversity_mixed, p_cluster_mixed, ncol=1)
 dev.off()
+
+# Phase 2: Evaluate temporal resolution required for robust estimate of
+# cells / HNA / phenotypic diversity
+
+#
+dirs <- list.dirs("binned_data", recursive = FALSE)
+#Merge all flowData
+for(i in dirs){
+  flowtemp <- read.flowSet(path = i)
+  param=c("FL1-H", "FL3-H", "SSC-H", "FSC-H")
+  flowtemp <- flowtemp[,param]
+  if(i == dirs[1]) flowSum <- flowtemp else flowSum <- flowCore::rbind2(flowSum, flowtemp)
+}
+
+# Transform parameters
+flowSum <- transform(flowSum,`FL1-H`=asinh(`FL1-H`), `SSC-H`=asinh(`SSC-H`), 
+                           `FL3-H`=asinh(`FL3-H`), `FSC-H`=asinh(`FSC-H`))
+
+# Create a PolygonGate for extracting the single-cell information
+sqrcut1 <- matrix(c(8.5,8.5,16,16,3,7.25,16,3),ncol=2, nrow=4)
+colnames(sqrcut1) <- c("FL1-H","FL3-H")
+polyGate1 <- polygonGate(.gate=sqrcut1, filterId = "Total Cells")
+### Creating a rectangle gate, set correct threshold here for FL1
+sqrcut2 <- matrix(c(asinh(20000),asinh(20000),20,20,
+                    0,20,20,0),ncol=2, nrow=4)
+colnames(sqrcut2) <- c("FL1-H","FL3-H")
+rGate_HNA <- polygonGate(.gate=sqrcut2, filterId = "HNA bacteria")
+
+# Extract counts
+a <- flowCore::filter(flowSum, rGate_HNA)
+HNACount <- summary(a);HNACount <- toTable(HNACount)
+s <- flowCore::filter(flowSum, polyGate1)
+TotalCount <- summary(s);TotalCount <- toTable(TotalCount)
+vol <- c()
+for(i in 1:length(flowSum)) vol[i] <- as.numeric(flowSum[[i]]@description$`$VOL`)/1000
+counts_flowSum <- data.frame(Sample = flowCore::sampleNames(flowSum),
+                           Total_cells = TotalCount$true/vol,
+                           HNA_cells = HNACount$true/vol,
+                           LNA_cells = (TotalCount$true - HNACount$true)/vol)
+
+# Normalize parameters
+summary <- fsApply(x=flowSum ,FUN=function(x) apply(x,2,max),use.exprs=TRUE)
+flowSum <- flowSum[!is.infinite(summary[,1])]
+max = max(summary[,1])
+mytrans <- function(x) x/max
+flowSum <- transform(flowSum ,`FL1-H`=mytrans(`FL1-H`),
+                       `FL3-H`=mytrans(`FL3-H`), 
+                       `SSC-H`=mytrans(`SSC-H`),
+                       `FSC-H`=mytrans(`FSC-H`))
+
+# Run phenotypic diversity analysis
+diversity_flowSum <- Diversity_rf(flowSum, R = 3, R.b = 3, param = param, d = 3)
