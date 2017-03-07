@@ -472,51 +472,157 @@ dev.off()
 # Phase 2: Evaluate temporal resolution required for robust estimate of
 # cells / HNA / phenotypic diversity
 
-#
+# Import data
 dirs <- list.dirs("binned_data", recursive = FALSE)
-#Merge all flowData
+dirs <- dirs[grep(dirs, pattern = "Stability")]
+dirs <- dirs[1:26]
+
+# Merge all flowData
 for(i in dirs){
-  flowtemp <- read.flowSet(path = i)
+  flowSum <- read.flowSet(path = i)
   param=c("FL1-H", "FL3-H", "SSC-H", "FSC-H")
-  flowtemp <- flowtemp[,param]
-  if(i == dirs[1]) flowSum <- flowtemp else flowSum <- flowCore::rbind2(flowSum, flowtemp)
-}
-
-# Transform parameters
-flowSum <- transform(flowSum,`FL1-H`=asinh(`FL1-H`), `SSC-H`=asinh(`SSC-H`), 
-                           `FL3-H`=asinh(`FL3-H`), `FSC-H`=asinh(`FSC-H`))
-
-# Create a PolygonGate for extracting the single-cell information
-sqrcut1 <- matrix(c(8.5,8.5,16,16,3,7.25,16,3),ncol=2, nrow=4)
-colnames(sqrcut1) <- c("FL1-H","FL3-H")
-polyGate1 <- polygonGate(.gate=sqrcut1, filterId = "Total Cells")
-### Creating a rectangle gate, set correct threshold here for FL1
-sqrcut2 <- matrix(c(asinh(20000),asinh(20000),20,20,
-                    0,20,20,0),ncol=2, nrow=4)
-colnames(sqrcut2) <- c("FL1-H","FL3-H")
-rGate_HNA <- polygonGate(.gate=sqrcut2, filterId = "HNA bacteria")
-
-# Extract counts
-a <- flowCore::filter(flowSum, rGate_HNA)
-HNACount <- summary(a);HNACount <- toTable(HNACount)
-s <- flowCore::filter(flowSum, polyGate1)
-TotalCount <- summary(s);TotalCount <- toTable(TotalCount)
-vol <- c()
-for(i in 1:length(flowSum)) vol[i] <- as.numeric(flowSum[[i]]@description$`$VOL`)/1000
-counts_flowSum <- data.frame(Sample = flowCore::sampleNames(flowSum),
-                           Total_cells = TotalCount$true/vol,
-                           HNA_cells = HNACount$true/vol,
-                           LNA_cells = (TotalCount$true - HNACount$true)/vol)
-
-# Normalize parameters
-summary <- fsApply(x=flowSum ,FUN=function(x) apply(x,2,max),use.exprs=TRUE)
-flowSum <- flowSum[!is.infinite(summary[,1])]
-max = max(summary[,1])
-mytrans <- function(x) x/max
-flowSum <- transform(flowSum ,`FL1-H`=mytrans(`FL1-H`),
+  flowSum <- flowSum[,param]
+  # Transform parameters
+  flowSum <- transform(flowSum,`FL1-H`=asinh(`FL1-H`), `SSC-H`=asinh(`SSC-H`), 
+                       `FL3-H`=asinh(`FL3-H`), `FSC-H`=asinh(`FSC-H`))
+  
+  # Create a PolygonGate for extracting the single-cell information
+  sqrcut1 <- matrix(c(8.5,8.5,16,16,3,7.25,16,3),ncol=2, nrow=4)
+  colnames(sqrcut1) <- c("FL1-H","FL3-H")
+  polyGate1 <- polygonGate(.gate=sqrcut1, filterId = "Total Cells")
+  ### Creating a rectangle gate, set correct threshold here for FL1
+  sqrcut2 <- matrix(c(asinh(20000),asinh(20000),20,20,
+                      0,20,20,0),ncol=2, nrow=4)
+  colnames(sqrcut2) <- c("FL1-H","FL3-H")
+  rGate_HNA <- polygonGate(.gate=sqrcut2, filterId = "HNA bacteria")
+  
+  # Extract counts
+  a <- flowCore::filter(flowSum, rGate_HNA)
+  HNACount <- summary(a);HNACount <- toTable(HNACount)
+  s <- flowCore::filter(flowSum, polyGate1)
+  TotalCount <- summary(s);TotalCount <- toTable(TotalCount)
+  vol <- c()
+  for(j in 1:length(flowSum)){
+    vol[j] <- as.numeric(flowSum[[j]]@description$`$VOL`)/1000
+  }
+  counts_flowSum <- data.frame(Sample = flowCore::sampleNames(flowSum),
+                               Total_cells = TotalCount$true,
+                               HNA_cells = HNACount$true,
+                               LNA_cells = (TotalCount$true - HNACount$true),
+                               volume = vol)
+  
+  # Normalize parameters
+  summary <- fsApply(x=flowSum ,FUN=function(x) apply(x,2,max),use.exprs=TRUE)
+  flowSum <- flowSum[!is.infinite(summary[,1])]
+  max = max(summary[,1])
+  mytrans <- function(x) x/17
+  flowSum <- transform(flowSum ,`FL1-H`=mytrans(`FL1-H`),
                        `FL3-H`=mytrans(`FL3-H`), 
                        `SSC-H`=mytrans(`SSC-H`),
                        `FSC-H`=mytrans(`FSC-H`))
+  
+  # Run phenotypic diversity analysis
+  diversity_flowSum <- Diversity_rf(flowSum, R = 3, R.b = 100, param = param, d = 3)
+  
+  # Extract metadata
+  metadata_flowSum <- data.frame(Sample_names = flowCore::sampleNames(flowSum), 
+                                 do.call(rbind, lapply(strsplit(flowCore::sampleNames(flowSum),"_"), rbind)))[,1:5]
+  colnames(metadata_flowSum)[2:5] <- c("Time", "Resolution", "Experiment", "Replicate")
+  metadata_flowSum$Replicate <- gsub(metadata_flowSum$Replicate, pattern = ".fcs", replacement = "") 
+  
+  # Merge dataframes
+  results_flowSum <- left_join(diversity_flowSum, counts_flowSum, by = c("Sample_names" = "Sample"))
+  results_flowSum <- left_join(results_flowSum, metadata_flowSum, by = "Sample_names")
+  
+  if(i == dirs[1]) results_final <- results_flowSum else results_final <- rbind(results_final, results_flowSum)
+}
 
-# Run phenotypic diversity analysis
-diversity_flowSum <- Diversity_rf(flowSum, R = 3, R.b = 3, param = param, d = 3)
+# Filter out some binning sizes
+results_final <- results_final[results_final$Resolution != '3600' & results_final$Resolution != '3000' & results_final$Resolution !='2400',]
+results_final$Resolution <- droplevels(results_final$Resolution)
+
+# Filter out outliers at 10 second resolution
+results_final_river <- filter(results_final, Total_cells/volume > 100 & Replicate == "river")
+results_final_tap <- filter(results_final, Replicate == "tap1")
+
+# Order resolution factor level
+results_final_river$Resolution <- factor(results_final_river$Resolution, 
+                                         levels = c("10", "30", "60", "120", "180", "240", "300", "600", "1200", "1800"))
+results_final_tap$Resolution <- factor(results_final_tap$Resolution, 
+                                         levels = c("10", "30", "60", "120", "180", "240", "300", "600", "1200", "1800"))
+
+# Make plots
+p_stab_density_tap <- ggplot(data = results_final_tap, aes(x = Total_cells, y = Total_cells/volume, fill = Resolution))+
+  geom_point(shape = 21, size = 4, alpha = 0.5)+
+  scale_fill_brewer(palette = "Paired")+
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  theme_bw()+
+  theme(axis.text=element_text(size=14),
+        axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18),
+        panel.grid.minor = element_blank(),
+        legend.text=element_text(size=15),legend.title=element_text(size=16))+
+  # ylim(10,50)+
+  geom_smooth(fill="gray", color = "black", span = 1)+
+  annotation_logticks(sides = "b")+
+  labs(y = bquote("Total cell density (cells µL"^{-1}*")"), x = "Cells measured", fill = "Resolution (s)")+
+  ggtitle("(A)")
+
+p_stab_diversity_tap <- ggplot(data = results_final_tap, aes(x = Total_cells, y = D2, fill = Resolution))+
+  geom_point(shape = 21, size = 4, alpha = 0.5)+
+  scale_fill_brewer(palette = "Paired")+
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  theme_bw()+
+  theme(axis.text=element_text(size=14),
+        axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18),
+        panel.grid.minor = element_blank(),
+        legend.text=element_text(size=15),legend.title=element_text(size=16))+  ylim(1750,2750)+
+  geom_smooth(fill="gray", color = "black", span = 1)+
+  annotation_logticks(sides = "b")+
+  labs(y = bquote("Phenotypic diversity (a.u.)"), x = "Cells measured", fill = "Resolution (s)")+
+  ggtitle("(B)")
+
+p_stab_density_river <- ggplot(data = results_final_river, aes(x = Total_cells, y = Total_cells/volume, fill = Resolution))+
+  geom_point(shape = 21, size = 4, alpha = 0.5)+
+  scale_fill_brewer(palette = "Paired")+
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  theme_bw()+
+  theme(axis.text=element_text(size=14),
+        axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18),
+        panel.grid.minor = element_blank(),
+        legend.text=element_text(size=15),legend.title=element_text(size=16))+  # ylim(10,50)+
+  geom_smooth(fill="gray", color = "black", span = 1)+
+  annotation_logticks(sides = "b")+
+  labs(y = bquote("Total cell density (cells µL"^{-1}*")"), x = "Cells measured", fill = "Resolution (s)")+
+  ggtitle("(C)")
+
+p_stab_diversity_river <- ggplot(data = results_final_river, aes(x = Total_cells, y = D2, fill = Resolution))+
+  geom_point(shape = 21, size = 4, alpha = 0.5)+
+  scale_fill_brewer(palette = "Paired")+
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  theme_bw()+
+  theme(axis.text=element_text(size=14),
+        axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18),
+        panel.grid.minor = element_blank(),
+        legend.text=element_text(size=15),legend.title=element_text(size=16))+
+  ylim(3000,4000)+
+  geom_smooth(fill="gray", color = "black", span = 1)+
+  annotation_logticks(sides = "b")+
+  labs(y = bquote("Phenotypic diversity (a.u.)"), x = "Cells measured", fill = "Resolution (s)")+
+  ggtitle("(D)")
+
+
+png("Fig5.png", res=500, height = 10, width = 10, units="in")
+grid_arrange_shared_legend(p_stab_density_tap, p_stab_diversity_tap, p_stab_density_river, p_stab_diversity_river, ncol = 2, nrow = 2)
+dev.off()
