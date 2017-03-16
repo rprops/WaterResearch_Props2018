@@ -8,7 +8,9 @@ library("qdapRegex")
 library("scales")
 library("cluster")
 library("factoextra")
+library("flowClean")
 source("functions.R")
+
 # # Bin the data
 # 
 # # Import original data
@@ -276,7 +278,6 @@ p_density <- ggplot(results_stability, aes(x = as.numeric(Time), y = Total_cells
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
-  ylim(0,100)+
   labs(y="", fill = "Deviation (s.d.)")+
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
@@ -285,7 +286,7 @@ p_density <- ggplot(results_stability, aes(x = as.numeric(Time), y = Total_cells
   geom_line(color="black", alpha = 0.9)+
   xlim(0,max(results_stability$Time))+
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80))+
-  geom_smooth(method = "lm", color = 'black', alpha = 0.5)
+  scale_y_continuous(breaks=c(0, 25, 50, 75), limits = c(0,75))
 
 p_diversity <-  ggplot(results_stability, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
@@ -307,14 +308,14 @@ p_HNA <- ggplot(results_stability, aes(x = as.numeric(Time), y = 100*HNA_cells/T
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
-  ylim(0,100)+
   labs(y="", fill = "Deviation (s.d.)", x = "Time (min.)")+
   ggtitle("(D) % HNA cells")+
   theme(axis.text=element_text(size=14),
         axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
   geom_line(color="black", alpha = 0.9)+
   xlim(0,max(results_stability$Time))+
-  scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80))+
+  scale_y_continuous(breaks=c(0, 25, 50, 75), limits = c(0,75))
 
 png("Fig2.png", res=500, height = 10, width = 10, units="in")
 ggarrange(p_FL1, p_density, p_diversity, p_HNA, ncol=1)
@@ -353,15 +354,18 @@ p_density_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = Total_cell
   xlim(0,max(results_bacteria$Time))+
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
 
-# p_HNA_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
-#   geom_point(shape=21, size = 4, alpha = 0.5)+
-#   scale_fill_distiller(palette="RdBu")+
-#   theme_bw()+
-#   ylim(0,100)+
-#   labs(y="% HNA cells", fill = "Deviation (s.d.)")+
-#   theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
-#   geom_line(color="black", alpha = 0.9)+
-#   xlim(0,max(results_bacteria$Time))
+p_HNA_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
+  geom_point(shape=21, size = 4, alpha = 0.5)+
+  scale_fill_distiller(palette="RdBu")+
+  theme_bw()+
+  ylim(0,100)+
+  labs(y="", fill = "Deviation (s.d.)")+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.text.y=element_text(size=14),
+        plot.title = element_text(hjust = 0, size=18))+
+  ggtitle(bquote("% HNA cells") )+
+  geom_line(color="black", alpha = 0.9)+
+  xlim(0,max(results_bacteria$Time))
 
 p_diversity_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
@@ -428,15 +432,18 @@ p_density_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = Total_ce
   geom_line(color="black", alpha = 0.9)+
   xlim(0, 80)
 
-# p_HNA_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
-#   geom_point(shape=21, size = 4, alpha = 0.5)+
-#   scale_fill_distiller(palette="RdBu")+
-#   theme_bw()+
-#   ylim(0,100)+
-#   labs(y="% HNA cells", fill = "Deviation (s.d.)")+
-#   theme(axis.title.x = element_blank(), axis.text.x = element_blank())+
-#   geom_line(color="black", alpha = 0.9)+
-#   xlim(0,max(results_mixed$Time))
+p_HNA_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
+  geom_point(shape=21, size = 4, alpha = 0.5)+
+  scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
+  theme_bw()+
+  ylim(0,100)+
+  labs(y="", fill = "Deviation (s.d.)")+
+  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+        axis.text.y=element_text(size=14),
+        plot.title = element_text(hjust = 0, size=18))+
+  ggtitle(bquote("(C) % HNA cells") )+
+  geom_line(color="black", alpha = 0.9)+
+  xlim(0, 80)
 
 p_diversity_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
@@ -447,7 +454,7 @@ p_diversity_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fi
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18))+
-  ggtitle("(C) Phenotypic diversity index (a.u.)")+
+  ggtitle("(D) Phenotypic diversity index (a.u.)")+
   geom_line(color="black", alpha = 0.9)+
   geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)+
   xlim(0,80)
@@ -459,14 +466,14 @@ p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_l
   theme(axis.text=element_text(size=14),
         axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
   labs(y="", x = "Time (min.)")+
-  ggtitle("(D) Phenotypic community type")+
+  ggtitle("(E) Phenotypic community type")+
   geom_line(color="black", alpha = 0.9)+
   guides(fill = FALSE)+
   xlim(0,80)+
   scale_y_continuous(breaks=c(0:5), limits = c(0,5.5))
 
-png("Fig4.png", res=500, height = 10, width = 10, units="in")
-ggarrange(p_FL1_mixed, p_density_mixed, p_diversity_mixed, p_cluster_mixed, ncol=1)
+png("Fig4_HNA.png", res=500, height = 12.5, width = 10, units="in")
+ggarrange(p_FL1_mixed, p_density_mixed, p_HNA_mixed, p_diversity_mixed, p_cluster_mixed, ncol=1)
 dev.off()
 
 # Phase 2: Evaluate temporal resolution required for robust estimate of
@@ -550,6 +557,40 @@ results_final_river$Resolution <- factor(results_final_river$Resolution,
                                          levels = c("10", "30", "60", "120", "180", "240", "300", "600", "1200", "1800"))
 results_final_tap$Resolution <- factor(results_final_tap$Resolution, 
                                          levels = c("10", "30", "60", "120", "180", "240", "300", "600", "1200", "1800"))
+# Calculate coefficient of variation for each temporal resolution
+
+# remove outliers by replacing the ones larger than 1.5*IQR by the 95% and 5% quantiles
+x <- results_final_river$Total_cells/results_final_river$volume
+qnt <- quantile(x, probs=c(.25, .75), na.rm = T)
+caps <- quantile(x, probs=c(.05, .95), na.rm = T)
+H <- 1.5 * IQR(x, na.rm = T)
+x[x < (qnt[1] - H)] <- caps[1]
+x[x > (qnt[2] + H)] <- caps[2]
+
+results_final_river$Total_cells <- x*results_final_river$volume
+results_final_river <- results_final_river %>% 
+  group_by(Resolution) %>% 
+  mutate(CV_dens = 100*sd(Total_cells/volume)/mean(Total_cells/volume),
+         CV_D2 = 100*sd(D2)/mean(D2))
+
+CV_river <- do.call(rbind,by(results_final_river[,c(13,15,16,17)], INDICES = factor(results_final_river$Resolution), 
+                 FUN = unique))
+
+CV_river <- data.frame(CV_river, Total_cells = do.call(rbind,by(results_final_river[,c(8,9)], INDICES = factor(results_final_river$Resolution), 
+                                                            FUN = colMeans))[,1])
+
+results_final_tap <- results_final_tap %>% 
+  group_by(Resolution) %>% 
+  mutate(CV_dens = 100*sd(Total_cells/volume)/mean(Total_cells/volume),
+         CV_D2 = 100*sd(D2)/mean(D2))
+
+CV_tap <- do.call(rbind,by(results_final_tap[,c(13,15,16,17)], INDICES = factor(results_final_tap$Resolution), 
+                             FUN = unique))
+CV_tap <- data.frame(CV_tap, Total_cells = do.call(rbind,by(results_final_tap[,c(8,9)], INDICES = factor(results_final_tap$Resolution), 
+                                                       FUN = colMeans))[,1])
+
+# Combine both
+CV_total <- rbind(CV_river, CV_tap)
 
 # Make plots
 p_stab_density_tap <- ggplot(data = results_final_tap, aes(x = Total_cells, y = Total_cells/volume, fill = Resolution))+
@@ -602,7 +643,8 @@ p_stab_density_river <- ggplot(data = results_final_river, aes(x = Total_cells, 
   geom_smooth(fill="gray", color = "black", span = 1)+
   annotation_logticks(sides = "b")+
   labs(y = bquote("Total cell density (cells µL"^{-1}*")"), x = "Cells measured", fill = "Resolution (s)")+
-  ggtitle("(C)")
+  ggtitle("(C)")+
+  ylim(200,500)
 
 p_stab_diversity_river <- ggplot(data = results_final_river, aes(x = Total_cells, y = D2, fill = Resolution))+
   geom_point(shape = 21, size = 4, alpha = 0.5)+
@@ -626,3 +668,57 @@ p_stab_diversity_river <- ggplot(data = results_final_river, aes(x = Total_cells
 png("Fig5.png", res=500, height = 10, width = 10, units="in")
 grid_arrange_shared_legend(p_stab_density_tap, p_stab_diversity_tap, p_stab_density_river, p_stab_diversity_river, ncol = 2, nrow = 2)
 dev.off()
+
+# Plots for coefficient of variation
+CV_total$Replicate <- gsub(CV_total$Replicate, pattern = "tap1", replacement = "Tap water")
+CV_total$Replicate <- gsub(CV_total$Replicate, pattern = "river", replacement = "River water")
+
+p_CV_D2 <- ggplot(data = CV_total, aes(x = Total_cells, y = CV_D2, fill = Resolution))+
+  geom_point(size = 4, aes(fill = Resolution, shape = Replicate), alpha = 0.5)+
+  scale_fill_brewer(palette = "Paired")+
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  theme_bw()+
+  scale_shape_manual(values=c(21,22))+
+  theme(axis.text=element_text(size=14),
+        axis.title=element_text(size=14), plot.title = element_text(hjust = 0, size=18),
+        panel.grid.minor = element_blank(),
+        legend.text=element_text(size=15),legend.title=element_text(size=16))+
+  # geom_smooth(fill="gray", color = "black", span = 1,formula=y~x)+
+  geom_smooth(method="lm",color="black",fill="gray",formula=y~x)+
+  annotation_logticks(sides = "b")+
+  labs(y = "CV on phenotypic diversity (%)", x = "Cells measured", fill = "Resolution (s)", shape = "")+
+  ggtitle("(A)")+
+  guides(fill = guide_legend(override.aes = list(shape = 21)), ncol=1)+
+  ylim(0,5)+
+  geom_hline(yintercept = 5, linetype = 2)
+
+
+p_CV_dens <- ggplot(data = CV_total, aes(x = Total_cells, y = CV_dens, fill = Resolution))+
+  geom_point(size = 4, aes(fill = Resolution,  shape = Replicate), alpha = 0.5)+
+  scale_fill_brewer(palette = "Paired")+
+  scale_x_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  theme_bw()+
+  scale_shape_manual(values=c(21,22))+
+  theme(axis.text=element_text(size=14),
+        axis.title=element_text(size=14), plot.title = element_text(hjust = 0, size=18),
+        panel.grid.minor = element_blank(),
+        legend.text=element_text(size=15),legend.title=element_text(size=16))+
+  # geom_smooth(fill="gray", color = "black", span = 1,formula=y~x)+
+  geom_smooth(color="black",fill="gray",formula=y~x)+
+  annotation_logticks(sides = "b")+
+  labs(y = "CV on cell density (%)", x = "Cells measured", fill = "Resolution (s)", shape = "")+
+  ggtitle("(B)")+
+  guides(fill = guide_legend(override.aes = list(shape = 21)), ncol=1)+
+  ylim(0,15)+
+  geom_hline(yintercept = 5, linetype = 2)
+
+png("Fig6.png", res=500, height = 5, width = 10, units="in")
+grid_arrange_shared_legend(p_CV_D2, p_CV_dens, ncol = 2, nrow = 1)
+dev.off()
+
