@@ -9,6 +9,8 @@ library("scales")
 library("cluster")
 library("factoextra")
 library("flowClean")
+library("nlme")
+library("mgcv")
 source("functions.R")
 
 # # Bin the data
@@ -35,7 +37,7 @@ source("functions.R")
 # }
 # setwd("..")
 
-
+set.seed(777)
 # Import binned data
 stability_FCS <- read.flowSet(path = "binned_data/Stability_tap1_60")
 bacteria_FCS <- read.flowSet(path = "binned_data/Bacteria_Run_60")
@@ -157,8 +159,8 @@ mixed_FCS <- transform(mixed_FCS ,`FL1-H`=mytrans(`FL1-H`),
 
 # Run phenotypic diversity analysis
 diversity_stability <- Diversity_rf(stability_FCS, R = 100, param = param, d = 3)
-diversity_bacteria <- Diversity_rf(bacteria_FCS, R = 100, param = param, d = 3)
-diversity_mixed <- Diversity_rf(mixed_FCS, R = 100, param = param, d = 3)
+# diversity_bacteria <- Diversity_rf(bacteria_FCS, R = 100, param = param, d = 3)
+# diversity_mixed <- Diversity_rf(mixed_FCS, R = 100, param = param, d = 3)
 
 # Create fingerprints for cluster analysis
 fp_bacteria <- flowBasis(bacteria_FCS, param=param, nbin = 128, bw = 0.01, normalize = function(x) x)
@@ -317,7 +319,7 @@ p_HNA <- ggplot(results_stability, aes(x = as.numeric(Time), y = 100*HNA_cells/T
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80))+
   scale_y_continuous(breaks=c(0, 25, 50, 75), limits = c(0,75))
 
-png("Fig2.png", res=500, height = 10, width = 10, units="in")
+png("Fig2_run3.png", res=500, height = 10, width = 10, units="in")
 ggarrange(p_FL1, p_density, p_diversity, p_HNA, ncol=1)
 dev.off()
 
@@ -559,7 +561,7 @@ results_final_tap$Resolution <- factor(results_final_tap$Resolution,
                                          levels = c("10", "30", "60", "120", "180", "240", "300", "600", "1200", "1800"))
 # Calculate coefficient of variation for each temporal resolution
 
-# remove outliers by replacing the ones larger than 1.5*IQR by the 95% and 5% quantiles
+# remove outliers by replacing the ones larger than 1.5*IQR by the 95% and 5% quantiles // called capping
 x <- results_final_river$Total_cells/results_final_river$volume
 qnt <- quantile(x, probs=c(.25, .75), na.rm = T)
 caps <- quantile(x, probs=c(.05, .95), na.rm = T)
@@ -718,7 +720,93 @@ p_CV_dens <- ggplot(data = CV_total, aes(x = Total_cells, y = CV_dens, fill = Re
   ylim(0,15)+
   geom_hline(yintercept = 5, linetype = 2)
 
-png("Fig6.png", res=500, height = 5, width = 10, units="in")
+png("Fig6_run2.png", res=500, height = 5, width = 10, units="in")
 grid_arrange_shared_legend(p_CV_D2, p_CV_dens, ncol = 2, nrow = 1)
 dev.off()
+
+# Autocorrelation check and gam analysis for tap water
+results_final_tap_60 <- results_stability
+
+### GAMs for stability inference on phenotypic diversity index 
+
+gam.D2 <- gamm(D2~s(Time, k=60), data=results_final_tap_60, 
+               correlation=corCAR1(form =~Time, value = 0.5))
+plot(gam.D2$gam,residuals=TRUE)
+plot(residuals.gam(gam.D2$gam), type = "l")
+acf(residuals.gam(gam.D2$gam))
+
+# Check for normality in model residuals
+qqPlot(residuals.gam(gam.D2$gam))
+
+plot(D2~Time, data = results_final_tap_60, ylim = c(1000,3000))
+points(predict(gam.D2$gam), x = results_final_tap_60$Time, col ="red")
+
+# Check for significant autocorrelation
+Box.test(residuals.gam(gam.D2$gam), lag=15, type="Ljung-Box")
+
+# Check for significance of slope
+anova(gam.D2$gam)
+
+### GAMs for stability inference on total cell density 
+gam.TC <- gamm(Total_cells~s(Time, k=60), data=results_final_tap_60, 
+               correlation=corCAR1(form =~Time, value = 0.5))
+plot(gam.TC$gam,residuals=TRUE)
+plot(residuals.gam(gam.TC$gam), type = "l")
+acf(residuals.gam(gam.TC$gam))
+
+qqPlot(residuals.gam(gam.TC$gam))
+
+
+plot(Total_cells~Time, data = results_final_tap_60)
+points(predict(gam.TC$gam), x = results_final_tap_60$Time, col ="red")
+
+# Check for significant autocorrelation
+Box.test(residuals.gam(gam.TC$gam), lag=15, type="Ljung-Box")
+
+# Check for significance of slope
+anova(gam.TC$gam)
+
+
+# Autocorrelation check and gam analysis for river water
+results_final_river_60 <- results_final_river[results_final_river$Resolution ==60,]
+results_final_river_60$Time <- as.numeric(as.character(results_final_river_60$Time))
+
+### GAMs for stability inference on phenotypic diversity index 
+
+gam.D2 <- gamm(D2~s(Time, k=60), data=results_final_river_60, 
+               correlation=corCAR1(form =~Time, value = 0.5))
+plot(gam.D2$gam,residuals=TRUE)
+plot(residuals.gam(gam.D2$gam), type = "l")
+acf(residuals.gam(gam.D2$gam))
+
+# Check for normality in model residuals
+qqPlot(residuals.gam(gam.D2$gam))
+
+plot(D2~Time, data = results_final_river_60, ylim = c(1000,5000))
+points(predict(gam.D2$gam), x = results_final_river_60$Time, col ="red")
+
+# Check for significant autocorrelation
+Box.test(residuals.gam(gam.D2$gam), lag=15, type="Ljung-Box")
+
+# Check for significance of slope
+anova(gam.D2$gam)
+
+### GAMs for stability inference on total cell density 
+gam.TC <- gamm(Total_cells~s(Time, k=60), data=results_final_river_60, 
+               correlation=corCAR1(form =~Time, value = 0.5))
+plot(gam.TC$gam,residuals=TRUE)
+plot(residuals.gam(gam.TC$gam), type = "l")
+
+# Check for normality in model residuals
+qqPlot(residuals.gam(gam.TC$gam))
+
+plot(Total_cells~Time, data = results_final_river_60, ylim = c(1000,5000))
+points(predict(gam.TC$gam), x = results_final_river_60$Time, col ="red")
+
+# Check for significant autocorrelation
+acf(residuals.gam(gam.TC$gam))
+Box.test(residuals.gam(gam.TC$gam), lag=15, type="Ljung-Box")
+
+# Check for significance of slope
+anova(gam.TC$gam)
 
