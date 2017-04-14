@@ -12,7 +12,12 @@ library("flowClean")
 library("nlme")
 library("mgcv")
 source("functions.R")
-
+my.settings <- list(
+  strip.background=list(col="transparent"),
+  strip.border=list(col="transparent", cex=5),
+  gate=list(col="black", fill="lightblue", alpha=0.2,border=NA,lwd=2),
+  panel.background=list(col="lightgray"),
+  background=list(col="white"))
 # # Bin the data
 # 
 # # Import original data
@@ -158,9 +163,9 @@ mixed_FCS <- transform(mixed_FCS ,`FL1-H`=mytrans(`FL1-H`),
                            `FSC-H`=mytrans(`FSC-H`))
 
 # Run phenotypic diversity analysis
-diversity_stability <- Diversity_rf(stability_FCS, R = 100, param = param, d = 3)
-# diversity_bacteria <- Diversity_rf(bacteria_FCS, R = 100, param = param, d = 3)
-# diversity_mixed <- Diversity_rf(mixed_FCS, R = 100, param = param, d = 3)
+# diversity_stability <- Diversity_rf(stability_FCS, R = 100, param = param, d = 3)
+diversity_bacteria <- Diversity_rf(bacteria_FCS, R = 100, param = param, d = 3)
+diversity_mixed <- Diversity_rf(mixed_FCS, R = 100, param = param, d = 3)
 
 # Create fingerprints for cluster analysis
 fp_bacteria <- flowBasis(bacteria_FCS, param=param, nbin = 128, bw = 0.01, normalize = function(x) x)
@@ -319,7 +324,7 @@ p_HNA <- ggplot(results_stability, aes(x = as.numeric(Time), y = 100*HNA_cells/T
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80))+
   scale_y_continuous(breaks=c(0, 25, 50, 75), limits = c(0,75))
 
-png("Fig2_run3.png", res=500, height = 10, width = 10, units="in")
+png("Fig2.png", res=500, height = 10, width = 10, units="in")
 ggarrange(p_FL1, p_density, p_diversity, p_HNA, ncol=1)
 dev.off()
 
@@ -434,18 +439,18 @@ p_density_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = Total_ce
   geom_line(color="black", alpha = 0.9)+
   xlim(0, 80)
 
-p_HNA_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
-  geom_point(shape=21, size = 4, alpha = 0.5)+
-  scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
-  theme_bw()+
-  ylim(0,100)+
-  labs(y="", fill = "Deviation (s.d.)")+
-  theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
-        axis.text.y=element_text(size=14),
-        plot.title = element_text(hjust = 0, size=18))+
-  ggtitle(bquote("(C) % HNA cells") )+
-  geom_line(color="black", alpha = 0.9)+
-  xlim(0, 80)
+# p_HNA_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
+#   geom_point(shape=21, size = 4, alpha = 0.5)+
+#   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
+#   theme_bw()+
+#   ylim(0,100)+
+#   labs(y="", fill = "Deviation (s.d.)")+
+#   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+#         axis.text.y=element_text(size=14),
+#         plot.title = element_text(hjust = 0, size=18))+
+#   ggtitle(bquote("(C) % HNA cells") )+
+#   geom_line(color="black", alpha = 0.9)+
+#   xlim(0, 80)
 
 p_diversity_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
@@ -456,7 +461,7 @@ p_diversity_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fi
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18))+
-  ggtitle("(D) Phenotypic diversity index (a.u.)")+
+  ggtitle("(C) Phenotypic diversity index (a.u.)")+
   geom_line(color="black", alpha = 0.9)+
   geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)+
   xlim(0,80)
@@ -468,14 +473,14 @@ p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_l
   theme(axis.text=element_text(size=14),
         axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
   labs(y="", x = "Time (min.)")+
-  ggtitle("(E) Phenotypic community type")+
+  ggtitle("(D) Phenotypic community type")+
   geom_line(color="black", alpha = 0.9)+
   guides(fill = FALSE)+
   xlim(0,80)+
   scale_y_continuous(breaks=c(0:5), limits = c(0,5.5))
 
-png("Fig4_HNA.png", res=500, height = 12.5, width = 10, units="in")
-ggarrange(p_FL1_mixed, p_density_mixed, p_HNA_mixed, p_diversity_mixed, p_cluster_mixed, ncol=1)
+png("Fig4.png", res=500, height = 10, width = 10, units="in")
+ggarrange(p_FL1_mixed, p_density_mixed, p_diversity_mixed, p_cluster_mixed, ncol=1)
 dev.off()
 
 # Phase 2: Evaluate temporal resolution required for robust estimate of
@@ -792,7 +797,7 @@ Box.test(residuals.gam(gam.D2$gam), lag=15, type="Ljung-Box")
 anova(gam.D2$gam)
 
 ### GAMs for stability inference on total cell density 
-gam.TC <- gamm(Total_cells~s(Time, k=60), data=results_final_river_60, 
+gam.TC <- gamm(Total_cells/volume~s(Time, k=60), data=results_final_river_60, 
                correlation=corCAR1(form =~Time, value = 0.5))
 plot(gam.TC$gam,residuals=TRUE)
 plot(residuals.gam(gam.TC$gam), type = "l")
@@ -800,7 +805,7 @@ plot(residuals.gam(gam.TC$gam), type = "l")
 # Check for normality in model residuals
 qqPlot(residuals.gam(gam.TC$gam))
 
-plot(Total_cells~Time, data = results_final_river_60, ylim = c(1000,5000))
+plot(Total_cells/volume~Time, data = results_final_river_60, ylim = c(0,320))
 points(predict(gam.TC$gam), x = results_final_river_60$Time, col ="red")
 
 # Check for significant autocorrelation
@@ -809,4 +814,49 @@ Box.test(residuals.gam(gam.TC$gam), lag=15, type="Ljung-Box")
 
 # Check for significance of slope
 anova(gam.TC$gam)
+
+
+
+### Fig S1
+
+fs_S1 <- transform(original_data[1],`FL1-H`=asinh(`FL1-H`), `SSC-H`=asinh(`SSC-H`), 
+                                 `FL3-H`=asinh(`FL3-H`), `FSC-H`=asinh(`FSC-H`))
+
+sqrcut1 <- matrix(c(asinh(20000),asinh(20000),16,16,
+                    3,9.55,16,3),ncol=2, nrow=4)
+colnames(sqrcut1) <- c("FL1-H","FL3-H")
+rGate_HNA <- polygonGate(.gate=sqrcut1, filterId = "HNA")
+sqrcut1 <- matrix(c(8.5,8.5,asinh(20000),asinh(20000),
+                    3,7.25,9.55,3),ncol=2, nrow=4)
+colnames(sqrcut1) <- c("FL1-H","FL3-H")
+rGate_LNA <- polygonGate(.gate=sqrcut1, filterId = "LNA")
+
+
+sqrcut1 <- matrix(c(8.5,8.5,16,16,
+                    3,7.25,16,3),ncol=2, nrow=4)
+colnames(sqrcut1) <- c("FL1-H","FL3-H")
+polyGate1 <- polygonGate(.gate=sqrcut1, filterId = "Total Cells")
+### Creating a rectangle gate, set correct threshold here for FL1
+sqrcut2 <- matrix(c(asinh(20000),asinh(20000),20,20,
+                    0,20,20,0),ncol=2, nrow=4)
+
+
+filters <- filters(list(rGate_LNA, rGate_HNA))
+flist <- list(filters)
+names(flist) <- flowCore::sampleNames(fs_S1)
+
+png("FigS1.png", res=500, height = 5, width = 6, units="in")
+print(xyplot(`FL3-H`~`FL1-H`, data=fs_S1,
+             filter=flist,
+             xbins=500,nbin=128, par.strip.text=list(col="black", font=3,cex=1), 
+             smooth=FALSE, xlim = c(7.5,15), ylim = c(2.5,15), xlab=list(label="Green fluorescence intensity (FL1-H)",cex=1.35),ylab=list(label="Red fluorescence intensity (FL3-H)",cex=1.35),
+             par.settings=my.settings,
+             scales=list(x=list(at=seq(from=0, to=15, by=2.5),cex=1),
+                         y=list(at=seq(from=0, to=15, by=2.5),cex=1)), layout=c(1,1),
+             margin=TRUE,
+             binTrans="log",
+             strip=strip.custom(factor.levels="")
+)
+)
+dev.off()
 
