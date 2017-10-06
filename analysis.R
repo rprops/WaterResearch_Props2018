@@ -153,7 +153,7 @@ bacteria_FCS <- transform(bacteria_FCS ,`FL1-H`=mytrans(`FL1-H`),
                            `SSC-H`=mytrans(`SSC-H`),
                            `FSC-H`=mytrans(`FSC-H`))
 
-summary <- fsApply(x=mixed_FCS ,FUN=function(x) apply(x,2,max),use.exprs=TRUE)
+summary <- fsApply(x=mixed_FCS, FUN=function(x) apply(x,2,max),use.exprs=TRUE)
 mixed_FCS <- mixed_FCS[!is.infinite(summary[,1])]
 max = max(summary[,1])
 mytrans <- function(x) x/max
@@ -200,7 +200,7 @@ nr_clusters_mixed <- which(tmp.si == max(tmp.si, na.rm = TRUE))
 clusters_bacteria <- pam(pc_cluster_bacteria, k=nr_clusters_bacteria)
 clusters_mixed <- pam(pc_cluster_mixed, k=nr_clusters_mixed)
 
-# # Extract cluster labels
+# Extract cluster labels
 cluster_labels_bacteria <- data.frame(Sample = names(clusters_bacteria$clustering),
                                       cluster_label = clusters_bacteria$clustering)
 cluster_labels_mixed <- data.frame(Sample = names(clusters_mixed$clustering),
