@@ -941,3 +941,72 @@ v_mixed <- ggplot2::ggplot(df_cv_mixed, ggplot2::aes(`FL1-H`, `FL3-H`, z = dev))
 
 print(v_mixed)
 
+### Extract labels of samples belonging to different "robust" community types
+### For natural community contaminations
+lab_mixed_c0 <- results_mixed$cluster_label == 1 & results_mixed$Time < 10
+lab_mixed_c1 <- results_mixed$cluster_label == 2
+lab_mixed_c2 <- results_mixed$cluster_label == 3
+lab_mixed_c3 <- results_mixed$cluster_label == 4
+lab_mixed_c4 <- results_mixed$cluster_label == 5
+
+
+### Calculate contrasts between control and contaminations for all 5 contaminations
+fp_mixed_c1 <- fp_contrasts(fp_mixed, comp2 = lab_mixed_c0, 
+                            comp1 = lab_mixed_c1)
+fp_mixed_c2 <- fp_contrasts(fp_mixed, comp2 = lab_mixed_c0, 
+                            comp1 = lab_mixed_c2)
+fp_mixed_c3 <- fp_contrasts(fp_mixed, comp2 = lab_mixed_c0, 
+                            comp1 = lab_mixed_c3)
+fp_mixed_c4 <- fp_contrasts(fp_mixed, comp2 = lab_mixed_c0, 
+                            comp1 = lab_mixed_c4)
+
+### Merge all contrasts
+fp_merged <- data.frame(rbind(fp_mixed_c1, fp_mixed_c2,
+                              fp_mixed_c3, fp_mixed_c4), 
+                        Contamination = c(rep("Evian", nrow(fp_mixed_c1)),
+                                            rep("Pond", nrow(fp_mixed_c2)),
+                                            rep("River-1", nrow(fp_mixed_c3)),
+                                            rep("River-2", nrow(fp_mixed_c4))))
+
+### Visualize different contrasts
+v_c_all <- ggplot(fp_merged, aes(`FL1.H`, `FL3.H`, z = Density))+
+  geom_tile(aes(fill=Density)) + 
+  geom_point(colour="gray", alpha=0.7)+
+  scale_fill_distiller(palette="RdYlBu", na.value="white", limits = c(-0.65, 0.65)) + 
+  stat_contour(aes(fill=..level..), geom="polygon", binwidth=0.1)+
+  theme_bw()+
+  facet_grid(~Contamination)+
+  geom_contour(color = "white", alpha = 1)+
+  labs(x="Green fluorescence intensity (a.u.)", y="Red fluorescence intensity (a.u.)")+
+  theme(axis.title=element_text(size=16), strip.text.x=element_text(size=16),
+        legend.title=element_text(size=15),legend.text=element_text(size=14),
+        axis.text = element_text(size=14),title=element_text(size=20),
+        strip.background=element_rect(fill=adjustcolor("lightgray",0.2))
+        #,panel.grid.major = element_blank(), panel.grid.minor = element_blank()
+  )
+
+png("Fig6a.png", res=500, height = 5, width = 10, units="in")
+print(v_c_all)
+dev.off()
+
+### Visualize different contrasts
+v_c_cat <- ggplot(fp_merged, aes(`FL1.H`, `FL3.H`, z = Density))+
+  geom_tile(aes(fill=Contamination), alpha=0.7) + 
+  geom_point(colour="gray", alpha=0.4)+
+  # scale_fill_distiller(palette="RdBu", na.value="white") + 
+  scale_fill_brewer(palette = "Set1")+
+  # stat_contour(aes(fill=..level..), geom="polygon", binwidth=0.1)+
+  theme_bw()+
+  # geom_contour(color = "white", alpha = 1)+
+  labs(x="Green fluorescence intensity (a.u.)", y="Red fluorescence intensity (a.u.)")+
+  theme(axis.title=element_text(size=16), strip.text.x=element_text(size=16),
+        legend.title=element_text(size=15),legend.text=element_text(size=14),
+        axis.text = element_text(size=14),title=element_text(size=20),
+        strip.background=element_rect(fill=adjustcolor("lightgray",0.2))
+        #,panel.grid.major = element_blank(), panel.grid.minor = element_blank()
+  )
+
+png("Fig6b.png", res=500, height = 5, width = 7, units="in")
+print(v_c_cat)
+dev.off()
+
