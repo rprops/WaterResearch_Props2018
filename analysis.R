@@ -994,7 +994,7 @@ v_c_cat <- ggplot(fp_merged, aes(`FL1.H`, `FL3.H`, z = Density))+
   geom_tile(aes(fill=Contamination), alpha=0.7) + 
   geom_point(colour="gray", alpha=0.4)+
   # scale_fill_distiller(palette="RdBu", na.value="white") + 
-  scale_fill_brewer(palette = "Set1")+
+  scale_fill_manual(values = c("#33A02C","#E31A1C","#FF7F00","#6A3D9A"))+
   # stat_contour(aes(fill=..level..), geom="polygon", binwidth=0.1)+
   theme_bw()+
   # geom_contour(color = "white", alpha = 1)+
