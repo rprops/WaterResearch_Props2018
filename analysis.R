@@ -351,7 +351,7 @@ p_density_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = Total_cell
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
-  ylim(0,250)+
+  ylim(0,225)+
   labs(y="", fill = "Deviation (s.d.)")+
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
@@ -381,7 +381,7 @@ p_diversity_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = D2, fil
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
-  ylim(900,3350)+
+  ylim(900,3000)+
   labs(y="", fill = "Deviation (s.d.)")+
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
@@ -437,7 +437,7 @@ p_density_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = Total_ce
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
-  ylim(0,250)+
+  ylim(0,225)+
   labs(y="", fill = "Deviation (s.d.)")+
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
@@ -466,7 +466,6 @@ p_diversity_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fi
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
-  ylim(900,3350)+
   labs(y="", fill = "Deviation (s.d.)")+
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
@@ -475,6 +474,7 @@ p_diversity_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fi
   geom_line(color="black", alpha = 0.9)+
   geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)+
   xlim(0,80)+
+  ylim(900,3000)+
   guides(fill = FALSE)
 
 p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_label))+
