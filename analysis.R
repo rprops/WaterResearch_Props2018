@@ -356,7 +356,7 @@ p_density_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = Total_cell
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18))+
-  ggtitle(bquote("Total cell density (cells µL"^{-1}*")") )+
+  ggtitle(bquote("(A) Total cell concentration (cells µL"^{-1}*")") )+
   geom_line(color="black", alpha = 0.9)+
   xlim(0,max(results_bacteria$Time))+
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80))+
@@ -372,7 +372,7 @@ p_HNA_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = 100*HNA_cells
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18),
         axis.title=element_text(size=16))+
-  ggtitle(bquote("% HNA cells") )+
+  ggtitle(bquote("(B) % HNA cells") )+
   geom_line(color="black", alpha = 0.9)+
   xlim(0,max(results_bacteria$Time))+
   guides(fill = FALSE)
@@ -386,7 +386,7 @@ p_diversity_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = D2, fil
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18))+
-  ggtitle("Phenotypic diversity index (a.u.)")+
+  ggtitle("(C) Phenotypic diversity index (a.u.)")+
   geom_line(color="black", alpha = 0.9)+
   geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)+
   xlim(0,max(results_bacteria$Time))+
@@ -400,14 +400,14 @@ p_cluster_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = cluster_la
   theme(axis.text=element_text(size=14),
         axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
   labs(y="", x = "Time (min.)")+
-  ggtitle("Phenotypic community type")+
+  ggtitle("(D) Phenotypic community type")+
   ylim(0,3.5)+
   geom_line(color="black", alpha = 0.9)+
   guides(fill = FALSE)+
   xlim(0,max(results_bacteria$Time))+
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
 
-png("Fig3a.png", res=500, height = 8, width = 13, units="in")
+png("Fig3.png", res=450, height = 8, width = 13, units="in")
 ggarrange(p_density_b, p_diversity_b,
           p_HNA_b,  p_cluster_b,
           ncol=2)
@@ -442,7 +442,7 @@ p_density_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = Total_ce
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18))+
-  ggtitle(bquote("Total cell density (cells µL"^{-1}*")") )+
+  ggtitle(bquote("(A) Total cell concentration (cells µL"^{-1}*")") )+
   geom_line(color="black", alpha = 0.9)+
   xlim(0, 80)+
   guides(fill = FALSE)
@@ -457,7 +457,7 @@ p_HNA_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = 100*HNA_cell
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18),
         axis.title=element_text(size=16))+
-  ggtitle(bquote("% HNA cells") )+
+  ggtitle(bquote("(B) % HNA cells") )+
   geom_line(color="black", alpha = 0.9)+
   xlim(0, 80)+
   guides(fill = FALSE)
@@ -470,7 +470,7 @@ p_diversity_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fi
   theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
         axis.text.y=element_text(size=14),
         plot.title = element_text(hjust = 0, size=18))+
-  ggtitle("Phenotypic diversity index (a.u.)")+
+  ggtitle("(C) Phenotypic diversity index (a.u.)")+
   geom_line(color="black", alpha = 0.9)+
   geom_errorbar(aes(ymin=D2-sd.D2, ymax=D2+sd.D2), width=0.01)+
   xlim(0,80)+
@@ -482,15 +482,23 @@ p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_l
   scale_fill_manual(values = c("#2166AC","#33A02C","#E31A1C","#FF7F00","#6A3D9A"))+
   theme_bw()+
   theme(axis.text=element_text(size=14),
-        axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
+        axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18)
+        #, panel.background = element_rect(fill = "lightblue",
+        #                                 colour = "lightblue",
+        #                                 size = 0.5, linetype = "solid"),
+        # panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+        #                                 colour = "white"), 
+        # panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+        #                                 colour = "white")
+        )+
   labs(y="", x = "Time (min.)")+
-  ggtitle("Phenotypic community type")+
+  ggtitle("(D) Phenotypic community type")+
   geom_line(color="black", alpha = 0.9)+
   guides(fill = FALSE)+
   xlim(0,80)+
   scale_y_continuous(breaks=c(0:5), limits = c(0,5.5))
 
-png("Fig4.png", res=500, height = 8, width = 13, units="in")
+png("Fig4.png", res=450, height = 8, width = 13, units="in")
 ggarrange(p_density_mixed, p_diversity_mixed, 
           p_HNA_mixed, p_cluster_mixed, 
           ncol=2)
@@ -754,7 +762,7 @@ plot(residuals.gam(gam.D2$gam), type = "l")
 acf(residuals.gam(gam.D2$gam))
 
 # Check for normality in model residuals
-qqPlot(residuals.gam(gam.D2$gam))
+car::qqPlot(residuals.gam(gam.D2$gam))
 
 plot(D2~Time, data = results_final_tap_60, ylim = c(1000,3000))
 points(predict(gam.D2$gam), x = results_final_tap_60$Time, col ="red")
@@ -972,7 +980,7 @@ fp_merged <- data.frame(rbind(fp_mixed_c1, fp_mixed_c2,
 v_c_all <- ggplot(fp_merged, aes(`FL1.H`, `FL3.H`, z = Density))+
   geom_tile(aes(fill=Density)) + 
   geom_point(colour="gray", alpha=0.7)+
-  scale_fill_distiller(palette="RdYlBu", na.value="white", limits = c(-0.65, 0.65)) + 
+  scale_fill_distiller(expression(Delta~"Density"), palette="RdYlBu", na.value="white", limits = c(-0.65, 0.65)) + 
   stat_contour(aes(fill=..level..), geom="polygon", binwidth=0.1)+
   theme_bw()+
   facet_grid(~Contamination)+
@@ -990,11 +998,17 @@ print(v_c_all)
 dev.off()
 
 ### Visualize different contrasts
-v_c_cat <- ggplot(fp_merged, aes(`FL1.H`, `FL3.H`, z = Density))+
+# idx <- duplicated(interaction(fp_merged$FL1.H, fp_merged$FL3.H)) | duplicated(interaction(fp_merged$FL1.H, fp_merged$FL3.H), fromLast = TRUE)
+# fp_merged$Contamination <- as.character(fp_merged$Contamination)
+# fp_merged$Contamination[idx] <- "Shared"
+
+
+v_c_cat <- fp_merged %>% dplyr::filter(Density>=0) %>% 
+  ggplot(aes(`FL1.H`, `FL3.H`, z = Density))+
   geom_tile(aes(fill=Contamination), alpha=0.7) + 
   geom_point(colour="gray", alpha=0.4)+
   # scale_fill_distiller(palette="RdBu", na.value="white") + 
-  scale_fill_manual(values = c("#33A02C","#E31A1C","#FF7F00","#6A3D9A"))+
+  scale_fill_manual(values = c("#33A02C","#E31A1C","#FF7F00","#6A3D9A", "Grey"))+
   # stat_contour(aes(fill=..level..), geom="polygon", binwidth=0.1)+
   theme_bw()+
   # geom_contour(color = "white", alpha = 1)+
