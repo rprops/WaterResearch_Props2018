@@ -374,7 +374,8 @@ p_HNA_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = 100*HNA_cells
         axis.title=element_text(size=16))+
   ggtitle(bquote("(B) % HNA cells") )+
   geom_line(color="black", alpha = 0.9)+
-  xlim(0,max(results_bacteria$Time))+
+  scale_x_continuous(breaks=c(0, 20, 40, 60, 80))+
+  # xlim(0,max(results_bacteria$Time))+
   guides(fill = FALSE)
 
 p_diversity_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
