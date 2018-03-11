@@ -994,7 +994,7 @@ v_c_all <- ggplot(fp_merged, aes(`FL1.H`, `FL3.H`, z = Density))+
         #,panel.grid.major = element_blank(), panel.grid.minor = element_blank()
   )
 
-png("Fig6a.png", res=500, height = 5, width = 10, units="in")
+pdf("Fig6a.png",  height = 5, width = 10)
 print(v_c_all)
 dev.off()
 
@@ -1021,7 +1021,7 @@ v_c_cat <- fp_merged %>% dplyr::filter(Density>=0) %>%
         #,panel.grid.major = element_blank(), panel.grid.minor = element_blank()
   )
 
-png("Fig6b.png", res=500, height = 5, width = 7, units="in")
+pdf("Fig6b.pdf",height = 5, width = 7)
 print(v_c_cat)
 dev.off()
 
