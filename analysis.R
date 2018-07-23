@@ -162,49 +162,99 @@ mixed_FCS <- transform(mixed_FCS ,`FL1-H`=mytrans(`FL1-H`),
                            `SSC-H`=mytrans(`SSC-H`),
                            `FSC-H`=mytrans(`FSC-H`))
 
+# Resample to minimum sample size:
+# stability_FCS <- FCS_resample(stability_FCS, replace = TRUE)
+# bacteria_FCS <- FCS_resample(bacteria_FCS, replace = TRUE)
+# mixed_FCS <- FCS_resample(mixed_FCS, replace = TRUE)
+
 # Run phenotypic diversity analysis
 diversity_stability <- Diversity_rf(stability_FCS, R = 100, param = param, d = 3)
 diversity_bacteria <- Diversity_rf(bacteria_FCS, R = 100, param = param, d = 3)
 diversity_mixed <- Diversity_rf(mixed_FCS, R = 100, param = param, d = 3)
 
-# Create fingerprints for cluster analysis
-fp_bacteria <- flowBasis(bacteria_FCS, param=param, nbin = 128, bw = 0.01, normalize = function(x) x)
-fp_mixed <- flowBasis(mixed_FCS, param=param, nbin = 128, bw = 0.01, normalize = function(x) x)
-
-# Perform PCA to reduce number of features in fingerprint
-pca_bacteria <- prcomp(fp_bacteria@basis)
-pca_mixed <- prcomp(fp_mixed@basis)
-
-# Only retain PC which explain x% of the variance
-thresh <- 0.9
-nr_pc_bacteria <- min(which((cumsum(vegan::eigenvals(pca_bacteria)/sum(vegan::eigenvals(pca_bacteria)))>thresh)==TRUE))
-nr_pc_mixed <- min(which((cumsum(vegan::eigenvals(pca_mixed)/sum(vegan::eigenvals(pca_mixed)))>thresh)==TRUE))
-
-pc_cluster_bacteria <- pca_bacteria$x[, 1:nr_pc_bacteria]
-pc_cluster_mixed <- pca_mixed$x[, 1:nr_pc_mixed]
-
-# Evaluate number of robust clusters by means of silhouette index
-tmp.si <- c()
-for(i in 2:(nrow(pc_cluster_bacteria)-1)){
-  tmp.si[i] <- pam(pc_cluster_bacteria, k=i)$silinfo$avg.width
+# Cluster analysis with 100 bootstraps
+for(R in 1:100){
+  bacteria_FCS_resample <- FCS_resample(bacteria_FCS, replace = TRUE, rarefy = TRUE, progress = FALSE)
+  mixed_FCS_resample <- FCS_resample(mixed_FCS, replace = TRUE, rarefy = TRUE, progress = FALSE)
+  fp_bacteria <- flowBasis(bacteria_FCS_resample, param=param, nbin = 128, bw = 0.01, normalize = function(x) x)
+  fp_mixed <- flowBasis(mixed_FCS_resample, param=param, nbin = 128, bw = 0.01, normalize = function(x) x)
+  
+  # Perform PCA to reduce number of features in fingerprint
+  pca_bacteria <- prcomp(fp_bacteria@basis)
+  pca_mixed <- prcomp(fp_mixed@basis)
+  
+  # Only retain PC which explain x% of the variance
+  thresh <- 0.9
+  nr_pc_bacteria <- min(which((cumsum(vegan::eigenvals(pca_bacteria)/sum(vegan::eigenvals(pca_bacteria)))>thresh)==TRUE))
+  nr_pc_mixed <- min(which((cumsum(vegan::eigenvals(pca_mixed)/sum(vegan::eigenvals(pca_mixed)))>thresh)==TRUE))
+  
+  pc_cluster_bacteria <- pca_bacteria$x[, 1:nr_pc_bacteria]
+  pc_cluster_mixed <- pca_mixed$x[, 1:nr_pc_mixed]
+  
+  # Evaluate number of robust clusters by means of silhouette index
+  tmp.si <- c()
+  for(i in 2:(nrow(pc_cluster_bacteria)-1)){
+    tmp.si[i] <- pam(pc_cluster_bacteria, k=i)$silinfo$avg.width
+  }
+  nr_clusters_bacteria <- which(tmp.si == max(tmp.si, na.rm = TRUE))
+  
+  tmp.si <- c()
+  for(i in 2:(nrow(pc_cluster_mixed)-1)){
+    tmp.si[i] <- pam(pc_cluster_mixed, k=i)$silinfo$avg.width
+  }
+  nr_clusters_mixed <- which(tmp.si == max(tmp.si, na.rm = TRUE))
+  
+  # Cluster samples and export cluster labels
+  clusters_bacteria <- pam(pc_cluster_bacteria, k=nr_clusters_bacteria)
+  clusters_mixed <- pam(pc_cluster_mixed, k=nr_clusters_mixed)
+  
+  # Extract cluster labels
+  if(R == 1){
+    cluster_labels_bacteria <- data.frame(Sample = names(clusters_bacteria$clustering),
+                                          cluster_label = clusters_bacteria$clustering)
+    cluster_labels_mixed <- data.frame(Sample = names(clusters_mixed$clustering),
+                                       cluster_label = clusters_mixed$clustering)
+  } else{
+    cluster_labels_bacteria <- cbind(cluster_labels_bacteria, clusters_bacteria$clustering)
+    cluster_labels_mixed <- cbind(cluster_labels_mixed, clusters_mixed$clustering)
+  }
+  cat("At bootstrap run - ", R, "/100 \n", sep = "")
 }
-nr_clusters_bacteria <- which(tmp.si == max(tmp.si, na.rm = TRUE))
 
-tmp.si <- c()
-for(i in 2:(nrow(pc_cluster_mixed)-1)){
-  tmp.si[i] <- pam(pc_cluster_mixed, k=i)$silinfo$avg.width
-}
-nr_clusters_mixed <- which(tmp.si == max(tmp.si, na.rm = TRUE))
+# Extract median
+cluster_labels_bacteria_med <- apply(cluster_labels_bacteria[, 2:101], 1, FUN = function(x) median(x))
+cluster_labels_mixed_med <- apply(cluster_labels_mixed[2:101], 1, FUN = function(x) median(x))
+cluster_labels_bacteria_med <- data.frame(Sample = names(cluster_labels_bacteria_med),
+                                          median_cluster_label = cluster_labels_bacteria_med)
+cluster_labels_bacteria_med$interaction <- interaction(cluster_labels_bacteria_med$Sample,
+                                                       cluster_labels_bacteria_med$median_cluster_label)
+cluster_labels_mixed_med <- data.frame(Sample = names(cluster_labels_mixed_med),
+                                          median_cluster_label = cluster_labels_mixed_med)
+cluster_labels_mixed_med$interaction <- interaction(cluster_labels_mixed_med$Sample,
+                                                    cluster_labels_mixed_med$median_cluster_label)
 
-# Cluster samples and export cluster labels
-clusters_bacteria <- pam(pc_cluster_bacteria, k=nr_clusters_bacteria)
-clusters_mixed <- pam(pc_cluster_mixed, k=nr_clusters_mixed)
+# Extract bootstrap confidence
+cluster_labels_bacteria_boot <- apply(cluster_labels_bacteria[, 2:101], 1, FUN = function(x) table(x))
+cluster_labels_mixed_boot <- apply(cluster_labels_mixed[, 2:101], 1, FUN = function(x) table(x))
+cluster_labels_bacteria_boot <- lapply(cluster_labels_bacteria_boot, FUN = function(x) data.frame(x))
+cluster_labels_bacteria_boot <- reshape2::melt(cluster_labels_bacteria_boot)
+cluster_labels_bacteria_boot <- cluster_labels_bacteria_boot[, c(1,3,4)]
+colnames(cluster_labels_bacteria_boot) <- c("cluster_label", "bootstrap_value", "Sample")
+cluster_labels_bacteria_boot$interaction <- interaction(cluster_labels_bacteria_boot$Sample,
+                                                        cluster_labels_bacteria_boot$cluster_label)
+cluster_labels_mixed_boot <- lapply(cluster_labels_mixed_boot, FUN = function(x) data.frame(x))
+cluster_labels_mixed_boot <- reshape2::melt(cluster_labels_mixed_boot)
+cluster_labels_mixed_boot <- cluster_labels_mixed_boot[, c(1,3,4)]
+colnames(cluster_labels_mixed_boot) <- c("cluster_label", "bootstrap_value", "Sample")
+cluster_labels_mixed_boot$interaction <- interaction(cluster_labels_mixed_boot$Sample,
+                                                     cluster_labels_mixed_boot$cluster_label)
 
-# Extract cluster labels
-cluster_labels_bacteria <- data.frame(Sample = names(clusters_bacteria$clustering),
-                                      cluster_label = clusters_bacteria$clustering)
-cluster_labels_mixed <- data.frame(Sample = names(clusters_mixed$clustering),
-                                      cluster_label = clusters_mixed$clustering)
+# Merge dataframes
+cluster_labels_bacteria_med <- left_join(cluster_labels_bacteria_med, cluster_labels_bacteria_boot[, -3],
+                                         by = "interaction")
+cluster_labels_mixed_med <- left_join(cluster_labels_mixed_med, cluster_labels_mixed_boot[, -3],
+                                      by = "interaction")
+
 
 # Merge count and phenotypic diversity data in one file
 results_stability <- left_join(counts_stability, diversity_stability, by = c("Sample" = "Sample_names"))
@@ -215,8 +265,8 @@ results_mixed <- left_join(counts_mixed, diversity_mixed, by = c("Sample" = "Sam
 results_mixed <- results_mixed[results_mixed$Total_cells > 0, ]
 
 # Merge results with cluster labels
-results_bacteria <- left_join(results_bacteria, cluster_labels_bacteria, by = "Sample")
-results_mixed <- left_join(results_mixed, cluster_labels_mixed, by = "Sample")
+results_bacteria <- left_join(results_bacteria, cluster_labels_bacteria_med, by = "Sample")
+results_mixed <- left_join(results_mixed, cluster_labels_mixed_med, by = "Sample")
 
 # Add time points
 meta_stability <- data.frame(do.call(rbind, lapply(strsplit(flowCore::sampleNames(stability_FCS),"_"), rbind)))
@@ -324,8 +374,8 @@ p_HNA <- ggplot(results_stability, aes(x = as.numeric(Time), y = 100*HNA_cells/T
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80))+
   scale_y_continuous(breaks=c(0, 25, 50, 75), limits = c(0,75)) 
 
-png("Fig2.png", res=500, height = 10, width = 10, units="in")
-ggarrange(p_FL1, p_density, p_diversity, p_HNA, ncol=1)
+pdf("Fig2.pdf", height = 10, width = 10)
+cowplot::plot_grid(p_FL1, p_density, p_diversity, p_HNA, ncol=1)
 dev.off()
 
 # Create bacteria contamination plots
@@ -394,9 +444,15 @@ p_diversity_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = D2, fil
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80))+
   guides(fill = FALSE)
 
-p_cluster_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = cluster_label))+
-  geom_point(shape=21, size = 4, alpha = 0.5, aes(fill = factor(cluster_label)))+
+# Add factor for visualizing bootsrap confidence
+results_bacteria$bootstrap_value_factor <- results_bacteria$bootstrap_value > 90
+
+p_cluster_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = median_cluster_label))+
+  geom_point(shape = 21, size = 4, color = "black", aes(fill = factor(median_cluster_label),
+                                            alpha = bootstrap_value_factor))+
   scale_fill_manual(values = c("#2166AC","#33A02C","#6A3D9A"))+
+  scale_alpha_manual(values = c(0.5, 0.9))+
+  scale_color_manual(values = c("black","black","black"))+
   theme_bw()+
   theme(axis.text=element_text(size=14),
         axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18))+
@@ -404,14 +460,15 @@ p_cluster_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = cluster_la
   ggtitle("(D) Phenotypic community type")+
   ylim(0,3.5)+
   geom_line(color="black", alpha = 0.9)+
-  guides(fill = FALSE)+
+  guides(fill = FALSE, alpha = FALSE)+
   xlim(0,max(results_bacteria$Time))+
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80))
 
-png("Fig3.png", res=450, height = 8, width = 13, units="in")
-ggarrange(p_density_b, p_diversity_b,
+pdf("Fig3.pdf", height = 8, width = 12)
+p1 <- cowplot::plot_grid(p_density_b, p_diversity_b,
           p_HNA_b,  p_cluster_b,
-          ncol=2)
+          ncol=2, align = "hv")
+print(p1)
 dev.off()
 
 
@@ -434,7 +491,7 @@ p_FL1_mixed <- ggplot(FL1_mixed, aes(x = Time, y = FL1))+
   xlim(0, 80*60/0.1)+
   scale_x_continuous(breaks=c(0, 20, 40, 60, 80)*60/0.1)
 
-p_density_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = Total_cells, fill = diff_count))+
+p_density_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = Total_cells, fill = diff_count))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
@@ -447,8 +504,9 @@ p_density_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = Total_ce
   geom_line(color="black", alpha = 0.9)+
   xlim(0, 80)+
   guides(fill = FALSE)
+  # geom_vline(xintercept = c(10,20,30,40,50,60), linetype =2)
 
-p_HNA_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
+p_HNA_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = 100*HNA_cells/Total_cells, fill = diff_HNA))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
@@ -463,7 +521,7 @@ p_HNA_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = 100*HNA_cell
   xlim(0, 80)+
   guides(fill = FALSE)
 
-p_diversity_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
+p_diversity_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fill = diff_D2))+
   geom_point(shape=21, size = 4, alpha = 0.5)+
   scale_fill_distiller(palette="RdBu", limits = c(0,3), breaks=c(0,1,2,3), oob=squish)+
   theme_bw()+
@@ -478,9 +536,13 @@ p_diversity_mixed <-  ggplot(results_mixed, aes(x = as.numeric(Time), y = D2, fi
   ylim(900,3000)+
   guides(fill = FALSE)
 
-p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_label))+
-  geom_point(shape=21, size = 4, alpha = 0.5, aes(fill = factor(cluster_label)))+
+results_mixed$bootstrap_value_factor <- results_mixed$bootstrap_value > 90
+p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = median_cluster_label))+
+  geom_point(shape=21, size = 4, aes(fill = factor(median_cluster_label), 
+                                                  alpha = bootstrap_value_factor))+
   scale_fill_manual(values = c("#2166AC","#33A02C","#E31A1C","#FF7F00","#6A3D9A"))+
+  scale_alpha_manual(values = c(0.5, 0.9))+
+  scale_color_manual(values = c("black", "black", "black", "black", "black"))+
   theme_bw()+
   theme(axis.text=element_text(size=14),
         axis.title=element_text(size=16), plot.title = element_text(hjust = 0, size=18)
@@ -495,14 +557,21 @@ p_cluster_mixed <- ggplot(results_mixed, aes(x = as.numeric(Time), y = cluster_l
   labs(y="", x = "Time (min.)")+
   ggtitle("(D) Phenotypic community type")+
   geom_line(color="black", alpha = 0.9)+
-  guides(fill = FALSE)+
+  guides(fill = FALSE, alpha = FALSE)+
   xlim(0,80)+
   scale_y_continuous(breaks=c(0:5), limits = c(0,5.5))
 
-png("Fig4.png", res=450, height = 8, width = 13, units="in")
-ggarrange(p_density_mixed, p_diversity_mixed, 
+ggplot(results_bacteria, aes(x = as.numeric(Time), y = median_cluster_label))+
+  geom_point(shape = 21, size = 4, color = "black", aes(fill = factor(median_cluster_label),
+                                                        alpha = bootstrap_value_factor))+
+  scale_fill_manual(values = c("#2166AC","#33A02C","#6A3D9A"))+
+  scale_alpha_manual(values = c(0.5, 0.9))+
+  scale_color_manual(values = c("black","black","black"))
+
+pdf("Fig4.pdf", height = 8, width = 12)
+cowplot::plot_grid(p_density_mixed, p_diversity_mixed, 
           p_HNA_mixed, p_cluster_mixed, 
-          ncol=2)
+          ncol=2, align = "hv")
 dev.off()
 
 # Phase 2: Evaluate temporal resolution required for robust estimate of
@@ -694,7 +763,7 @@ p_stab_diversity_river <- ggplot(data = results_final_river, aes(x = Total_cells
   ggtitle("(D)")
 
 
-png("Fig5.png", res=500, height = 10, width = 10, units="in")
+pdf("Fig5.pdf", height = 10, width = 10)
 grid_arrange_shared_legend(p_stab_density_tap, p_stab_diversity_tap, p_stab_density_river, p_stab_diversity_river, ncol = 2, nrow = 2)
 dev.off()
 
@@ -703,7 +772,7 @@ CV_total$Replicate <- gsub(CV_total$Replicate, pattern = "tap1", replacement = "
 CV_total$Replicate <- gsub(CV_total$Replicate, pattern = "river", replacement = "River water")
 
 p_CV_D2 <- ggplot(data = CV_total, aes(x = Total_cells, y = CV_D2, fill = Resolution))+
-  geom_point(size = 4, aes(fill = Resolution, shape = Replicate), alpha = 0.5)+
+  geom_point(size = 4, aes(fill = Resolution, shape = Replicate), alpha = 0.9)+
   scale_fill_brewer(palette = "Paired")+
   scale_x_log10(
     breaks = scales::trans_breaks("log10", function(x) 10^x),
@@ -726,7 +795,7 @@ p_CV_D2 <- ggplot(data = CV_total, aes(x = Total_cells, y = CV_D2, fill = Resolu
 
 
 p_CV_dens <- ggplot(data = CV_total, aes(x = Total_cells, y = CV_dens, fill = Resolution))+
-  geom_point(size = 4, aes(fill = Resolution,  shape = Replicate), alpha = 0.5)+
+  geom_point(size = 4, aes(fill = Resolution,  shape = Replicate), alpha = 0.9)+
   scale_fill_brewer(palette = "Paired")+
   scale_x_log10(
     breaks = scales::trans_breaks("log10", function(x) 10^x),
@@ -747,7 +816,7 @@ p_CV_dens <- ggplot(data = CV_total, aes(x = Total_cells, y = CV_dens, fill = Re
   ylim(0,15)+
   geom_hline(yintercept = 5, linetype = 2)
 
-png("Fig6_run2.png", res=500, height = 5, width = 10, units="in")
+pdf("Fig6_run2.pdf", height = 5, width = 10)
 grid_arrange_shared_legend(p_CV_D2, p_CV_dens, ncol = 2, nrow = 1)
 dev.off()
 
@@ -867,7 +936,7 @@ filters <- filters(list(rGate_LNA, rGate_HNA))
 flist <- list(filters)
 names(flist) <- flowCore::sampleNames(fs_S1)
 
-png("FigS1.png", res=500, height = 5, width = 6, units="in")
+pdf("FigS1.pdf", height = 5, width = 6)
 print(xyplot(`FL3-H`~`FL1-H`, data=fs_S1,
              filter=flist,
              xbins=500,nbin=128, par.strip.text=list(col="black", font=3,cex=1), 
@@ -980,7 +1049,7 @@ fp_merged <- data.frame(rbind(fp_mixed_c1, fp_mixed_c2,
 ### Visualize different contrasts
 v_c_all <- ggplot(fp_merged, aes(`FL1.H`, `FL3.H`, z = Density))+
   geom_tile(aes(fill=Density)) + 
-  geom_point(colour="gray", alpha=0.7)+
+  geom_point(colour="#333333", alpha=0.3, size =1)+
   scale_fill_distiller(expression(Delta~"Density"), palette="RdYlBu", na.value="white", limits = c(-0.65, 0.65)) + 
   stat_contour(aes(fill=..level..), geom="polygon", binwidth=0.1)+
   theme_bw()+
@@ -994,7 +1063,7 @@ v_c_all <- ggplot(fp_merged, aes(`FL1.H`, `FL3.H`, z = Density))+
         #,panel.grid.major = element_blank(), panel.grid.minor = element_blank()
   )
 
-pdf("Fig6a.png",  height = 5, width = 10)
+pdf("Fig6a.pdf",  height = 5, width = 10)
 print(v_c_all)
 dev.off()
 
@@ -1004,10 +1073,10 @@ dev.off()
 # fp_merged$Contamination[idx] <- "Shared"
 
 
-v_c_cat <- fp_merged %>% dplyr::filter(Density>=0) %>% 
+v_c_cat <- fp_merged %>% 
   ggplot(aes(`FL1.H`, `FL3.H`, z = Density))+
   geom_tile(aes(fill=Contamination), alpha=0.7) + 
-  geom_point(colour="gray", alpha=0.4)+
+  geom_point(colour="#333333", alpha=0.3, size = 1)+
   # scale_fill_distiller(palette="RdBu", na.value="white") + 
   scale_fill_manual(values = c("#33A02C","#E31A1C","#FF7F00","#6A3D9A", "Grey"))+
   # stat_contour(aes(fill=..level..), geom="polygon", binwidth=0.1)+
