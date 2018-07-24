@@ -222,7 +222,7 @@ for(R in 1:100){
 }
 
 # Extract median
-cluster_labels_bacteria_med <- apply(cluster_labels_bacteria[, 2:101], 1, FUN = function(x) median(x))
+cluster_labels_bacteria_med <- apply(cluster_labels_bacteria[, 2:101], 1, FUN = function(x) data.frame(table(x))$x[which.max(table(x))])
 cluster_labels_mixed_med <- apply(cluster_labels_mixed[2:101], 1, FUN = function(x) median(x))
 cluster_labels_bacteria_med <- data.frame(Sample = names(cluster_labels_bacteria_med),
                                           median_cluster_label = cluster_labels_bacteria_med)
@@ -447,7 +447,8 @@ p_diversity_b <-  ggplot(results_bacteria, aes(x = as.numeric(Time), y = D2, fil
 # Add factor for visualizing bootsrap confidence
 results_bacteria$bootstrap_value_factor <- results_bacteria$bootstrap_value > 90
 
-p_cluster_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), y = median_cluster_label))+
+p_cluster_b <- ggplot(results_bacteria, aes(x = as.numeric(Time), 
+                                            y = as.numeric(as.character(median_cluster_label))))+
   geom_point(shape = 21, size = 4, color = "black", aes(fill = factor(median_cluster_label),
                                             alpha = bootstrap_value_factor))+
   scale_fill_manual(values = c("#2166AC","#33A02C","#6A3D9A"))+
